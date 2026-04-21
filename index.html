@@ -1,9 +1,8 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <title>Quest WebXR – Phantom Limb Prototype</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8">
+  <title>WebXR Test – Realistic Arm (No Rotation)</title>
   <style>
     body { margin: 0; overflow: hidden; }
   </style>
@@ -13,17 +12,11 @@
 <script type="module">
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
 import { VRButton } from 'https://unpkg.com/three@0.160.0/examples/jsm/webxr/VRButton.js';
-import { GLTFLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x202020);
 
-const camera = new THREE.PerspectiveCamera(
-  70,
-  window.innerWidth / window.innerHeight,
-  0.01,
-  100
-);
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 100);
 camera.position.set(0, 1.6, 1.5);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -36,102 +29,77 @@ const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
 scene.add(light);
 
 // -----------------------------------------------------
-// PLACEHOLDER LIMB (upper arm + forearm + hand)
+// REALISTIC PROCEDURAL ARM (no GLB, no rotation)
 // -----------------------------------------------------
-const limbGroup = new THREE.Group();
+const arm = new THREE.Group();
+
+// Skin material
+const skin = new THREE.MeshStandardMaterial({
+  color: 0xffd2b8,
+  roughness: 0.6,
+  metalness: 0.1
+});
+
+// Shoulder
+const shoulder = new THREE.Mesh(
+  new THREE.SphereGeometry(0.12, 32, 32),
+  skin
+);
+shoulder.position.set(0, 1.7, -1);
+arm.add(shoulder);
 
 // Upper arm
 const upperArm = new THREE.Mesh(
-  new THREE.CylinderGeometry(0.05, 0.05, 0.35, 16),
-  new THREE.MeshStandardMaterial({ color: 0x00ffcc })
+  new THREE.CylinderGeometry(0.09, 0.11, 0.35, 32),
+  skin
 );
-upperArm.position.set(0, 1.6, -1);
-upperArm.rotation.z = Math.PI / 8;
-limbGroup.add(upperArm);
+upperArm.position.set(0, 1.5, -1);
+upperArm.rotation.z = Math.PI / 12;
+arm.add(upperArm);
+
+// Elbow
+const elbow = new THREE.Mesh(
+  new THREE.SphereGeometry(0.08, 32, 32),
+  skin
+);
+elbow.position.set(0, 1.33, -1);
+arm.add(elbow);
 
 // Forearm
 const forearm = new THREE.Mesh(
-  new THREE.CylinderGeometry(0.04, 0.04, 0.30, 16),
-  new THREE.MeshStandardMaterial({ color: 0x00ccff })
+  new THREE.CylinderGeometry(0.06, 0.08, 0.32, 32),
+  skin
 );
-forearm.position.set(0, 1.35, -1);
-forearm.rotation.z = Math.PI / 4;
-limbGroup.add(forearm);
+forearm.position.set(0, 1.15, -1);
+forearm.rotation.z = Math.PI / 8;
+arm.add(forearm);
+
+// Wrist
+const wrist = new THREE.Mesh(
+  new THREE.SphereGeometry(0.06, 32, 32),
+  skin
+);
+wrist.position.set(0, 1.0, -1);
+arm.add(wrist);
 
 // Hand
 const hand = new THREE.Mesh(
-  new THREE.SphereGeometry(0.07, 16, 16),
-  new THREE.MeshStandardMaterial({ color: 0xffcc00 })
+  new THREE.BoxGeometry(0.12, 0.18, 0.05),
+  skin
 );
-hand.position.set(0, 1.2, -1);
-limbGroup.add(hand);
+hand.position.set(0, 0.88, -1);
+hand.rotation.x = Math.PI / 12;
+arm.add(hand);
 
-scene.add(limbGroup);
-
-// -----------------------------------------------------
-// LOAD REAL GLB MODEL (optional, replaces placeholder)
-// -----------------------------------------------------
-const loader = new GLTFLoader();
-let intactLimb, phantomLimb;
-
-loader.load('./models/right_arm.glb', (gltf) => {
-  intactLimb = gltf.scene;
-  intactLimb.scale.set(0.2, 0.2, 0.2);
-  intactLimb.position.set(0.25, 1.2, -0.5);
-  scene.add(intactLimb);
-
-  phantomLimb = intactLimb.clone();
-  scene.add(phantomLimb);
-});
+scene.add(arm);
 
 // -----------------------------------------------------
-// MIRROR FUNCTION
+// ANIMATION LOOP (no rotation)
 // -----------------------------------------------------
-function mirrorLimb() {
-  if (!intactLimb || !phantomLimb) return;
-
-  phantomLimb.position.set(
-    -intactLimb.position.x,
-     intactLimb.position.y,
-     intactLimb.position.z
-  );
-
-  phantomLimb.rotation.set(
-    intactLimb.rotation.x,
-    -intactLimb.rotation.y,
-     intactLimb.rotation.z
-  );
-}
-
-// -----------------------------------------------------
-// CONTROLLER TRACKING
-// -----------------------------------------------------
-const controller = renderer.xr.getController(0);
-scene.add(controller);
-
 renderer.setAnimationLoop(() => {
-  // Move placeholder limb with controller
-  limbGroup.position.copy(controller.position);
-  limbGroup.quaternion.copy(controller.quaternion);
-
-  // Move real GLB limb if loaded
-  if (intactLimb) {
-    intactLimb.position.copy(controller.position);
-    intactLimb.quaternion.copy(controller.quaternion);
-  }
-
-  mirrorLimb();
   renderer.render(scene, camera);
 });
 
-// -----------------------------------------------------
-// RESIZE HANDLER
-// -----------------------------------------------------
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
 </script>
 
 </body>
