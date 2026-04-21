@@ -1,8 +1,9 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>WebXR Test</title>
+  <meta charset="UTF-8" />
+  <title>Quest WebXR – Phantom Limb Prototype</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
     body { margin: 0; overflow: hidden; }
   </style>
@@ -12,11 +13,17 @@
 <script type="module">
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
 import { VRButton } from 'https://unpkg.com/three@0.160.0/examples/jsm/webxr/VRButton.js';
+import { GLTFLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x202020);
 
-const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 100);
+const camera = new THREE.PerspectiveCamera(
+  70,
+  window.innerWidth / window.innerHeight,
+  0.01,
+  100
+);
 camera.position.set(0, 1.6, 1.5);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -25,20 +32,69 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 document.body.appendChild(VRButton.createButton(renderer));
 
-// A cube so the page is never blank
+const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
+scene.add(light);
+
+// Fallback cube so the page is never blank
 const cube = new THREE.Mesh(
-  new THREE.BoxGeometry(0.3, 0.3, 0.3),
+  new THREE.BoxGeometry(0.2, 0.2, 0.2),
   new THREE.MeshStandardMaterial({ color: 0xff0000 })
 );
 cube.position.set(0, 1.6, -1);
 scene.add(cube);
 
-const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
-scene.add(light);
+const loader = new GLTFLoader();
+
+let intactLimb, phantomLimb;
+
+// Load your GLB model (place it in /models/right_arm.glb)
+loader.load('./models/right_arm.glb', (gltf) => {
+  console.log("Loaded GLB!");
+
+  intactLimb = gltf.scene;
+  intactLimb.scale.set(0.2, 0.2, 0.2);   // adjust scale if needed
+  intactLimb.position.set(0.25, 1.2, -0.5);
+  scene.add(intactLimb);
+
+  phantomLimb = intactLimb.clone();
+  scene.add(phantomLimb);
+});
+
+// Mirror function
+function mirrorLimb() {
+  if (!intactLimb || !phantomLimb) return;
+
+  phantomLimb.position.set(
+    -intactLimb.position.x,
+     intactLimb.position.y,
+     intactLimb.position.z
+  );
+
+  phantomLimb.rotation.set(
+    intactLimb.rotation.x,
+    -intactLimb.rotation.y,
+     intactLimb.rotation.z
+  );
+}
+
+// XR input
+const controller = renderer.xr.getController(0);
+scene.add(controller);
 
 renderer.setAnimationLoop(() => {
-  cube.rotation.y += 0.01;
+  if (intactLimb) {
+    intactLimb.position.copy(controller.position);
+    intactLimb.quaternion.copy(controller.quaternion);
+  }
+
+  mirrorLimb();
   renderer.render(scene, camera);
+});
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
 });
 </script>
 
