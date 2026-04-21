@@ -35,24 +35,48 @@ document.body.appendChild(VRButton.createButton(renderer));
 const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
 scene.add(light);
 
-// Fallback cube so the page is never blank
-const cube = new THREE.Mesh(
-  new THREE.BoxGeometry(0.2, 0.2, 0.2),
-  new THREE.MeshStandardMaterial({ color: 0xff0000 })
+// -----------------------------------------------------
+// PLACEHOLDER LIMB (upper arm + forearm + hand)
+// -----------------------------------------------------
+const limbGroup = new THREE.Group();
+
+// Upper arm
+const upperArm = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.05, 0.05, 0.35, 16),
+  new THREE.MeshStandardMaterial({ color: 0x00ffcc })
 );
-cube.position.set(0, 1.6, -1);
-scene.add(cube);
+upperArm.position.set(0, 1.6, -1);
+upperArm.rotation.z = Math.PI / 8;
+limbGroup.add(upperArm);
 
+// Forearm
+const forearm = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.04, 0.04, 0.30, 16),
+  new THREE.MeshStandardMaterial({ color: 0x00ccff })
+);
+forearm.position.set(0, 1.35, -1);
+forearm.rotation.z = Math.PI / 4;
+limbGroup.add(forearm);
+
+// Hand
+const hand = new THREE.Mesh(
+  new THREE.SphereGeometry(0.07, 16, 16),
+  new THREE.MeshStandardMaterial({ color: 0xffcc00 })
+);
+hand.position.set(0, 1.2, -1);
+limbGroup.add(hand);
+
+scene.add(limbGroup);
+
+// -----------------------------------------------------
+// LOAD REAL GLB MODEL (optional, replaces placeholder)
+// -----------------------------------------------------
 const loader = new GLTFLoader();
-
 let intactLimb, phantomLimb;
 
-// Load your GLB model (place it in /models/right_arm.glb)
 loader.load('./models/right_arm.glb', (gltf) => {
-  console.log("Loaded GLB!");
-
   intactLimb = gltf.scene;
-  intactLimb.scale.set(0.2, 0.2, 0.2);   // adjust scale if needed
+  intactLimb.scale.set(0.2, 0.2, 0.2);
   intactLimb.position.set(0.25, 1.2, -0.5);
   scene.add(intactLimb);
 
@@ -60,7 +84,9 @@ loader.load('./models/right_arm.glb', (gltf) => {
   scene.add(phantomLimb);
 });
 
-// Mirror function
+// -----------------------------------------------------
+// MIRROR FUNCTION
+// -----------------------------------------------------
 function mirrorLimb() {
   if (!intactLimb || !phantomLimb) return;
 
@@ -77,11 +103,18 @@ function mirrorLimb() {
   );
 }
 
-// XR input
+// -----------------------------------------------------
+// CONTROLLER TRACKING
+// -----------------------------------------------------
 const controller = renderer.xr.getController(0);
 scene.add(controller);
 
 renderer.setAnimationLoop(() => {
+  // Move placeholder limb with controller
+  limbGroup.position.copy(controller.position);
+  limbGroup.quaternion.copy(controller.quaternion);
+
+  // Move real GLB limb if loaded
   if (intactLimb) {
     intactLimb.position.copy(controller.position);
     intactLimb.quaternion.copy(controller.quaternion);
@@ -91,6 +124,9 @@ renderer.setAnimationLoop(() => {
   renderer.render(scene, camera);
 });
 
+// -----------------------------------------------------
+// RESIZE HANDLER
+// -----------------------------------------------------
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
