@@ -97,7 +97,6 @@
 
 <script type="module">
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
-import { VRButton } from 'https://unpkg.com/three@0.160.0/examples/jsm/webxr/VRButton.js';
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x202020);
@@ -109,7 +108,33 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.xr.enabled = true;
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
-document.body.appendChild(VRButton.createButton(renderer));
+
+// Custom XR session button with hand tracking support
+const xrButton = document.createElement('button');
+xrButton.id = 'xr-button';
+xrButton.style.cssText = `
+  position: absolute; bottom: 20px; right: 20px;
+  padding: 12px 24px; background: #88bbff; color: #000;
+  border: none; border-radius: 8px; font-size: 16px; font-weight: bold;
+  cursor: pointer; z-index: 100;
+`;
+xrButton.textContent = 'Enter VR (Hand Tracking)';
+document.body.appendChild(xrButton);
+
+xrButton.addEventListener('click', async () => {
+  const sessionInit = {
+    optionalFeatures: ['hand-tracking', 'local-floor', 'bounded-floor']
+  };
+  try {
+    const session = await navigator.xr.requestSession('immersive-vr', sessionInit);
+    await renderer.xr.setSession(session);
+    xrButton.textContent = 'Exit VR';
+    xrButton.onclick = () => session.end();
+  } catch (err) {
+    console.error('Failed to start XR session:', err);
+    alert('WebXR not available or hand tracking not supported. Try a different browser/device (Quest 2/3, Chrome).');
+  }
+});
 
 const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
 scene.add(light);
@@ -216,17 +241,32 @@ const gridHelper = new THREE.GridHelper(10, 10, 0x444444, 0x333333);
 gridHelper.position.y = 0.01;
 scene.add(gridHelper);
 
-// VR Controller
-const rightController = renderer.xr.getController(0);
-scene.add(rightController);
-const controllerMesh = new THREE.Mesh(
-  new THREE.CylinderGeometry(0.02, 0.02, 0.1, 8),
-  new THREE.MeshStandardMaterial({ color: 0x88bbff })
-);
-controllerMesh.rotation.x = Math.PI / 2;
-rightController.add(controllerMesh);
+// VR Controllers - safely get references (may be null)
+const leftController = renderer.xr.getController(1);   // Left hand controller (may be null)
+const rightController = renderer.xr.getController(0);  // Right hand controller
+
+// Only add to scene if controller exists
+if (leftController) {
+  scene.add(leftController);
+  const leftCtrlMesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.02, 0.02, 0.1, 8),
+    new THREE.MeshStandardMaterial({ color: 0x88bbff })
+  );
+  leftCtrlMesh.rotation.x = Math.PI / 2;
+  leftController.add(leftCtrlMesh);
+}
+if (rightController) {
+  scene.add(rightController);
+  const rightCtrlMesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.02, 0.02, 0.1, 8),
+    new THREE.MeshStandardMaterial({ color: 0x88bbff })
+  );
+  rightCtrlMesh.rotation.x = Math.PI / 2;
+  rightController.add(rightCtrlMesh);
+}
 
 let controllerActive = false;
+let useMirrorMode = true; // Mirror left controller → right arm
 
 // UI Controls
 const joint1Slider = document.getElementById('joint1-slider');
@@ -234,6 +274,11 @@ const joint2Slider = document.getElementById('joint2-slider');
 const joint3Slider = document.getElementById('joint3-slider');
 const joint4Slider = document.getElementById('joint4-slider');
 const statusDiv = document.getElementById('status');
+
+// Hand tracking support
+let trackedLeftHand = null;
+let trackedRightHand = null;
+let handPoseTarget = null;
 
 function resetArm() {
   baseGroup.rotation.y = 0;
@@ -244,18 +289,52 @@ function resetArm() {
 }
 resetArm();
 
-function updateIKFromController(controller) {
-  const controllerPos = new THREE.Vector3();
-  const controllerQuat = new THREE.Quaternion();
-  controller.getWorldPosition(controllerPos);
-  controller.getWorldQuaternion(controllerQuat);
+// Inverse Kinematics: makes end effector follow mirrored controller
+function updateIKFromController(controllerOrHand) {
+  let controllerPos, controllerQuat;
+  
+  // Check if we have a hand (XRHand) or controller (XRController)
+  const isHand = typeof XRHand !== 'undefined' && controllerOrHand instanceof XRHand;
+  
+  if (isHand) {
+    // Get wrist joint from hand
+    const wristJoint = controllerOrHand.get('wrist');
+    if (!wristJoint) return;
+    
+    // Get pose in XR reference space
+    const refSpace = renderer.xr.getReferenceSpace();
+    if (!refSpace) return;
+    
+    const wristPose = wristJoint.getPose(refSpace);
+    if (!wristPose) return;
+    
+    controllerPos = new THREE.Vector3().fromArray(wristPose.transform.position);
+    controllerQuat = new THREE.Quaternion().fromArray(wristPose.transform.orientation);
+    statusDiv.textContent = 'Hand tracking active — Left hand driving right arm';
+  } else {
+    // Traditional controller
+    controllerOrHand.getWorldPosition(controllerPos = new THREE.Vector3());
+    controllerOrHand.getWorldQuaternion(controllerQuat = new THREE.Quaternion());
+    statusDiv.textContent = 'Controller mode — Left controller driving right arm';
+  }
 
-  // Offset for end effector position relative to controller
+  // Mirror the controller position across the body's center (X → -X)
+  // This creates the mirror therapy effect: left hand moves → right arm mirrors
+  const mirroredPos = controllerPos.clone();
+  mirroredPos.x = -mirroredPos.x;
+
+  // Mirror the controller orientation (yaw around Y-axis)
+  const mirroredQuat = controllerQuat.clone();
+  const mirrorAngle = Math.PI; // 180° around Y
+  const mirrorYaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), mirrorAngle);
+  mirroredQuat.premultiply(mirrorYaw); // Apply mirror rotation
+
+  // Offset for end effector position relative to mirrored controller
   const offset = new THREE.Vector3(0, -0.05, -0.15);
-  offset.applyQuaternion(controllerQuat);
-  const targetPos = controllerPos.clone().add(offset);
+  offset.applyQuaternion(mirroredQuat);
+  const targetPos = mirroredPos.clone().add(offset);
 
-  // Shoulder world position
+  // Shoulder world position (right shoulder)
   const shoulderWorldPos = new THREE.Vector3();
   baseGroup.getWorldPosition(shoulderWorldPos);
 
@@ -266,19 +345,18 @@ function updateIKFromController(controller) {
   const baseYaw = Math.atan2(toTarget.x, -toTarget.z);
   baseGroup.rotation.y = baseYaw;
 
-  // Transform target into baseGroup's local frame (Y-up, Z forward relative to base)
+  // Transform target into baseGroup's local frame
   const cosY = Math.cos(-baseYaw);
   const sinY = Math.sin(-baseYaw);
-  const localZ = toTarget.x * sinY + toTarget.z * cosY; // coordinate along base's local Z
-  const localY = toTarget.y; // up
+  const localZ = toTarget.x * sinY + toTarget.z * cosY;
+  const localY = toTarget.y;
 
-  // In our convention, forward (direction base faces) is -localZ
   let forward = -localZ;
   let up = localY;
 
   // Link lengths
-  const L1 = 0.6; // shoulder to elbow
-  const L2eff = 0.6 + 0.5; // elbow to tip (upperArm 0.6 + forearm+gripper 0.5)
+  const L1 = 0.6;
+  const L2eff = 0.6 + 0.5;
 
   let r = Math.sqrt(forward*forward + up*up);
   const minReach = Math.abs(L1 - L2eff);
@@ -296,21 +374,19 @@ function updateIKFromController(controller) {
     r = minReach;
   }
 
-  // Elbow flexion angle (0 = straight)
   const cosTheta2 = (r*r - L1*L1 - L2eff*L2eff) / (2 * L1 * L2eff);
   const theta2 = Math.acos(Math.max(-1, Math.min(1, cosTheta2)));
 
-  // Shoulder angle from vertical
   const psi = Math.atan2(forward, up);
   const phi = Math.atan2(L2eff * Math.sin(theta2), L1 + L2eff * Math.cos(theta2));
   const theta1 = psi - phi;
 
   shoulderGroup.rotation.x = theta1;
   elbowGroup.rotation.x = theta2;
-  wristGroup.rotation.x = 0; // keep straight
+  wristGroup.rotation.x = 0;
 
-  // Wrist yaw from controller's yaw relative to base
-  const euler = new THREE.Euler().setFromQuaternion(controllerQuat, 'YXZ');
+  // Wrist yaw from mirrored controller orientation
+  const euler = new THREE.Euler().setFromQuaternion(mirroredQuat, 'YXZ');
   wristGroup.rotation.y = euler.y - baseYaw;
 }
 
@@ -329,36 +405,69 @@ joint4Slider.addEventListener('input', (e) => {
 });
 
 // VR session events
-function onSessionStart() {
+let currentSession = null;
+
+function onSessionStart(session) {
+  currentSession = session;
   controllerActive = true;
-  statusDiv.textContent = 'Controller active - Arm tracking controller';
   joint1Slider.disabled = true;
   joint2Slider.disabled = true;
   joint3Slider.disabled = true;
   joint4Slider.disabled = true;
+  
+  session.addEventListener('inputsourceschange', onInputSourcesChange);
+  updateInputSources(session);
 }
+
+function updateInputSources(session) {
+  let foundHand = false;
+  for (const inputSource of session.inputSources) {
+    if (inputSource.hand) {
+      if (inputSource.handedness === 'left') {
+        trackedLeftHand = inputSource.hand;
+        foundHand = true;
+      } else if (inputSource.handedness === 'right') {
+        trackedRightHand = inputSource.hand;
+      }
+    }
+  }
+  if (foundHand) {
+    statusDiv.textContent = 'Hand tracking: Left hand detected — controlling right arm';
+  } else {
+    statusDiv.textContent = 'No hand detected — Use left controller';
+  }
+}
+
 function onSessionEnd() {
   controllerActive = false;
+  currentSession = null;
+  trackedLeftHand = null;
+  trackedRightHand = null;
+  handPoseTarget = null;
   statusDiv.textContent = 'Session ended - Using manual sliders';
   joint1Slider.disabled = false;
   joint2Slider.disabled = false;
   joint3Slider.disabled = false;
   joint4Slider.disabled = false;
 }
-renderer.xr.addEventListener('sessionstart', onSessionStart);
+
+renderer.xr.addEventListener('sessionstart', (e) => onSessionStart(e.session));
 renderer.xr.addEventListener('sessionend', onSessionEnd);
 
 // Animation loop
 renderer.setAnimationLoop(() => {
   if (!controllerActive) {
-    // Sync sliders with current angles
+    // Manual mode: sync sliders
     joint1Slider.value = THREE.MathUtils.radToDeg(baseGroup.rotation.y);
     joint2Slider.value = THREE.MathUtils.radToDeg(shoulderGroup.rotation.x);
     joint3Slider.value = THREE.MathUtils.radToDeg(elbowGroup.rotation.x);
     joint4Slider.value = THREE.MathUtils.radToDeg(wristGroup.rotation.y);
   } else {
-    if (rightController.visible) {
-      updateIKFromController(rightController);
+    // VR mode: try hand tracking first, fall back to controller
+    if (trackedLeftHand && trackedLeftHand.get('wrist')) {
+      updateIKFromController(trackedLeftHand);
+    } else if (leftController && leftController.visible) {
+      updateIKFromController(leftController);
     }
   }
   renderer.render(scene, camera);
