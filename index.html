@@ -217,9 +217,9 @@ const joint3Sphere = new THREE.Mesh(new THREE.SphereGeometry(0.08, 16, 16), join
 joint3Sphere.position.y = 0.6;
 elbowGroup.add(joint3Sphere);
 
-// Wrist group
-wristGroup.position.y = 0.6;
-elbowGroup.add(wristGroup);
+// Wrist group (can rotate around Y for yaw and X for pitch)
+const wristGroup = new THREE.Group();
+wristGroup.rotation.order = 'YXZ'; // Y (yaw) then X (pitch)
 
 // Forearm link (from wrist to end effector)
 const forearmGeom = new THREE.CylinderGeometry(0.04, 0.04, 0.4, 16);
@@ -272,39 +272,58 @@ function updateArmFromAngles(baseYaw, shoulderPitch, elbowPitch, wristPitch) {
   wristGroup.rotation.z = wristPitch;
 }
 
-// Compute IK for 3-joint planar arm (shoulder, elbow, wrist) to match controller position
+// Compute IK for planar 3-joint arm (shoulder pitch, elbow pitch, wrist pitch)
+// All joints rotate around Z for forward/upward motion
 function computeArmIK(targetPos) {
-  // Local position relative to base (shoulder)
-  const basePos = baseGroup.getWorldPosition(new THREE.Vector3());
-  const offset = new THREE.Vector3().subVectors(targetPos, basePos);
+  // Get base position in world space
+  const baseWorldPos = new THREE.Vector3();
+  baseGroup.getWorldPosition(baseWorldPos);
   
-  // Project to XZ plane for base yaw (horizontal turn)
-  const baseYaw = Math.atan2(offset.x, -offset.z);
+  // Get direction from base to target in local avatar space
+  const toTarget = new THREE.Vector3().subVectors(targetPos, baseWorldPos);
   
-  // Distance from base to target in vertical plane
-  const horizontalDist = Math.sqrt(offset.x * offset.x + offset.z * offset.z);
-  const verticalDist = offset.y;
+  // Convert to arm's local coordinate system
+  const avatarInvMatrix = new THREE.Matrix4();
+  avatarGroup.matrixWorld.clone().invert();
+  const localTarget = toTarget.applyMatrix4(avatarInvMatrix);
   
-  // Arm lengths
+  // For our setup: arm extends in +Y direction from base when angles are zero
+  // We need shoulder pitch (Z), elbow pitch (Z), and wrist pitch (Z)
+  
+  // Horizontal angle (yaw) is handled by baseGroup.rotation.y separately
+  // For the planar arm, project onto the Y-Z plane (forward/up plane)
+  const horizontalDist = Math.sqrt(localTarget.x * localTarget.x + localTarget.z * localTarget.z);
+  const verticalDist = localTarget.y;
+  
+  // Arm segment lengths
   const L1 = 0.6; // lower arm (shoulder to elbow)
   const L2 = 0.6; // upper arm (elbow to wrist)
+  const L3 = 0.2; // wrist to end effector
   
-  // Use law of cosines to find elbow angle
-  const D = Math.min(L1 + L2 - 0.1, Math.max(horizontalDist * horizontalDist + verticalDist * verticalDist, 0.01));
-  const cosElbow = (L1 * L1 + L2 * L2 - D) / (2 * L1 * L2);
-  const elbowAngle = Math.PI - Math.acos(Math.max(-1, Math.min(1, cosElbow)));
+  const totalReach = L1 + L2 + L3;
+  const availableDist = Math.min(Math.sqrt(horizontalDist * horizontalDist + verticalDist * verticalDist), totalReach - 0.05);
   
-  // Find shoulder and wrist angles
-  const cosShoulder = (L1 * L1 + D - L2 * L2) / (2 * L1 * Math.sqrt(D));
-  const shoulderToElbow = Math.atan2(verticalDist, horizontalDist) + Math.acos(Math.max(-1, Math.min(1, cosShoulder)));
+  // Calculate planar angle from vertical (pointing up = 0)
+  const planarAngle = Math.atan2(horizontalDist, verticalDist);
   
-  const shoulderPitch = -shoulderToElbow + Math.PI/2;
-  const elbowPitch = -(Math.PI - elbowAngle) + Math.PI/2;
+  // Law of cosines for elbow angle (inner angle at elbow)
+  const cosElbowInner = (L1*L1 + L2*L2 - availableDist*availableDist) / (2 * L1 * L2);
+  const elbowInnerAngle = Math.acos(Math.max(-1, Math.min(1, cosElbowInner)));
   
-  // Wrist pitch to orient end effector downward (simple heuristic)
-  const wristPitch = -elbowPitch - shoulderPitch + Math.PI/2;
+  // Shoulder angle: angle between upper arm and line from shoulder to elbow
+  const cosShoulder = (L1*L1 + availableDist*availableDist - L2*L2) / (2 * L1 * availableDist);
+  const shoulderToElbow = Math.acos(Math.max(-1, Math.min(1, cosShoulder)));
   
-  return { baseYaw, shoulderPitch, elbowPitch, wristPitch };
+  // Final angles (negative because Three.js positive rotation is counterclockwise)
+  const shoulderPitch = -(planarAngle + shoulderToElbow);
+  const elbowPitch = -(Math.PI - elbowInnerAngle);
+  const wristPitch = -(shoulderPitch + elbowPitch) + availableDist * 0.5; // Wrist orientation
+  
+  return {
+    shoulderPitch: shoulderPitch,
+    elbowPitch: elbowPitch,
+    wristPitch: wristPitch
+  };
 }
 
 // Apply controller transformation to IK target
@@ -315,24 +334,62 @@ function updateIKFromController(controller) {
   controller.getWorldPosition(controllerPos);
   controller.getWorldQuaternion(controllerQuat);
   
-  // Offset from controller to desired end effector position
-  // The end effector should be in front of and slightly below the controller
-  const offset = new THREE.Vector3(0, -0.1, -0.15);
+  // Offset from controller to desired end effector position (in front of controller)
+  const offset = new THREE.Vector3(0, -0.05, -0.15);
   offset.applyQuaternion(controllerQuat);
   const targetPos = controllerPos.clone().add(offset);
   
-  // Compute IK
-  const angles = computeArmIK(targetPos);
+  // Compute base yaw (horizontal angle) from base to target
+  const baseWorldPos = new THREE.Vector3();
+  baseGroup.getWorldPosition(baseWorldPos);
+  const toTarget = new THREE.Vector3().subVectors(targetPos, baseWorldPos);
   
-  // Apply angles
-  baseGroup.rotation.y = angles.baseYaw;
-  shoulderGroup.rotation.x = angles.shoulderPitch;
-  elbowGroup.rotation.x = angles.elbowPitch;
+  // Base yaw: rotate around Y to face the target horizontally
+  const baseYaw = Math.atan2(toTarget.x, -toTarget.z);
+  baseGroup.rotation.y = baseYaw;
   
-  // Set wrist orientation to follow controller orientation, with some damping
+  // Compute planar IK for the 3-joint arm (shoulder, elbow, wrist - all Z-axis rotations)
+  // Project target onto plane perpendicular to base Y rotation
+  const horizontalDist = Math.sqrt(toTarget.x * toTarget.x + toTarget.z * toTarget.z);
+  const verticalDist = toTarget.y;
+  
+  // Arm lengths (sum must reach from base shoulder to end effector)
+  const L1 = 0.6; // shoulder to elbow
+  const L2 = 0.6; // elbow to wrist
+  const L3 = 0.2; // wrist to gripper
+  
+  const totalReach = L1 + L2 + L3;
+  const distance = Math.sqrt(horizontalDist * horizontalDist + verticalDist * verticalDist);
+  const constrainedDist = Math.min(distance, totalReach - 0.05);
+  
+  // Normalize direction
+  const ratio = constrainedDist / (distance || 0.01);
+  const adjHorizontal = horizontalDist * ratio;
+  const adjVertical = verticalDist * ratio;
+  
+  // Law of cosines: find elbow bend angle
+  const cosElbow = (L1*L1 + L2*L2 - constrainedDist*constrainedDist) / (2 * L1 * L2);
+  const elbowInner = Math.acos(Math.max(-1, Math.min(1, cosElbow)));
+  
+  // Shoulder angle: angle from vertical to upper arm direction
+  const cosShoulder = (L1*L1 + constrainedDist*constrainedDist - L2*L2) / (2 * L1 * constrainedDist);
+  const shoulderOffset = Math.acos(Math.max(-1, Math.min(1, cosShoulder)));
+  
+  // Angle from vertical to line from shoulder to wrist point
+  const planarAngle = Math.atan2(adjHorizontal, adjVertical);
+  
+  const shoulderPitch = -(planarAngle + shoulderOffset);
+  const elbowPitch = -(Math.PI - elbowInner);
+  const wristPitch = -(shoulderPitch + elbowPitch) * 0.5; // Distribute bend to wrist
+  
+  // Apply angles - using Z-axis for shoulder/elbow pitch (forward motion)
+  shoulderGroup.rotation.z = shoulderPitch;
+  elbowGroup.rotation.z = elbowPitch;
+  wristGroup.rotation.x = wristPitch;
+  
+  // Wrist Y rotation matches controller's horizontal twist
   const euler = new THREE.Euler().setFromQuaternion(controllerQuat, 'YXZ');
-  wristGroup.rotation.z = euler.x;
-  wristGroup.rotation.y = euler.y;
+  wristGroup.rotation.y = euler.y - baseYaw; // Relative to base rotation
 }
 
 // Controls (sliders - disabled when controller active)
@@ -349,20 +406,19 @@ joint1Slider.addEventListener('input', (e) => {
 
 joint2Slider.addEventListener('input', (e) => {
   if (!controllerActive) {
-    shoulderGroup.rotation.x = THREE.MathUtils.degToRad(e.target.value);
+    shoulderGroup.rotation.z = THREE.MathUtils.degToRad(e.target.value);
   }
 });
 
 joint3Slider.addEventListener('input', (e) => {
   if (!controllerActive) {
-    elbowGroup.rotation.x = THREE.MathUtils.degToRad(e.target.value);
+    elbowGroup.rotation.z = THREE.MathUtils.degToRad(e.target.value);
   }
 });
 
 joint4Slider.addEventListener('input', (e) => {
   if (!controllerActive) {
-    wristGroup.rotation.z = THREE.MathUtils.degToRad(e.target.value);
-    wristGroup.rotation.y = 0;
+    wristGroup.rotation.y = THREE.MathUtils.degToRad(e.target.value);
   }
 });
 
@@ -393,20 +449,20 @@ renderer.xr.addEventListener('sessionstart', onSessionStart);
 renderer.xr.addEventListener('sessionend', onSessionEnd);
 
 renderer.setAnimationLoop((time, frame) => {
-  // Update slider values from arm if in manual mode
-  if (!controllerActive) {
-    const baseDeg = THREE.MathUtils.radToDeg(baseGroup.rotation.y);
-    joint1Slider.value = baseDeg;
-    
-    const shoulderDeg = THREE.MathUtils.radToDeg(shoulderGroup.rotation.x);
-    joint2Slider.value = shoulderDeg;
-    
-    const elbowDeg = THREE.MathUtils.radToDeg(elbowGroup.rotation.x);
-    joint3Slider.value = elbowDeg;
-    
-    const wristDeg = THREE.MathUtils.radToDeg(wristGroup.rotation.z);
-    joint4Slider.value = wristDeg;
-  }
+// Update slider values from arm angles when in manual mode
+if (!controllerActive) {
+  const baseDeg = THREE.MathUtils.radToDeg(baseGroup.rotation.y);
+  joint1Slider.value = baseDeg;
+  
+  const shoulderDeg = THREE.MathUtils.radToDeg(shoulderGroup.rotation.z);
+  joint2Slider.value = shoulderDeg;
+  
+  const elbowDeg = THREE.MathUtils.radToDeg(elbowGroup.rotation.z);
+  joint3Slider.value = elbowDeg;
+  
+  const wristDeg = THREE.MathUtils.radToDeg(wristGroup.rotation.y);
+  joint4Slider.value = wristDeg;
+}
   
   // If controller is active and referenced, update IK
   if (controllerActive && rightController.visible) {
