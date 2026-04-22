@@ -22,36 +22,31 @@
   <div id="status">Initializing…</div>
   <button id="vr-button">Enter VR (Hand Tracking)</button>
 
-   <script type="module">
-     let THREE;
-     try {
-       const mod = await import('https://unpkg.com/three@0.160.0/build/three.module.js');
-       THREE = mod;
-     } catch (e) {
-       console.error(e);
-       const el = document.getElementById('status');
-       if (el) el.textContent = 'Failed to load Three.js: ' + e.message;
-       throw e;
-     }
+    <script type="module">
+      try {
+        const THREE = await import('https://unpkg.com/three@0.160.0/build/three.module.js');
+        // --- scene setup ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x202020);
+        const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 100);
+        camera.position.set(0, 1.6, 0);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.xr.enabled = true;
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
 
-     try {
-    scene.background = new THREE.Color(0x202020);
+        const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1);
+        scene.add(hemi);
 
-    const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 100);
-    camera.position.set(0, 1.6, 0);
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.xr.enabled = true;
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    document.body.appendChild(renderer.domElement);
+     const skinMat = new THREE.MeshStandardMaterial({ color: 0xffd2b8, roughness: 0.6, metalness: 0.1 });
+     const shirtMat = new THREE.MeshStandardMaterial({ color: 0x3399ff, roughness: 0.5, metalness: 0.1 });
+     const pantsMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.6, metalness: 0.1 });
+     const robotMat = new THREE.MeshStandardMaterial({ color: 0x3399ff, roughness: 0.4, metalness: 0.2 });
+     const jointMat = new THREE.MeshStandardMaterial({ color: 0xffa500, roughness: 0.4, metalness: 0.2 });
 
-    const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1);
-    scene.add(hemi);
-
-    const skinMat = new THREE.MeshStandardMaterial({ color: 0xffd2b8, roughness: 0.6, metalness: 0.1 });
-    const shirtMat = new THREE.MeshStandardMaterial({ color: 0x3399ff, roughness: 0.5, metalness: 0.1 });
-    const pantsMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.6, metalness: 0.1 });
-    const robotMat = new THREE.MeshStandardMaterial({ color: 0x3399ff, roughness: 0.4, metalness: 0.2 });
-    const jointMat = new THREE.MeshStandardMaterial({ color: 0xffa500, roughness: 0.4, metalness: 0.2 });
+     // Arm segment lengths (shared)
+     const L1 = 0.35; // upper arm (shoulder→elbow)
+     const L2 = 0.30; // forearm (elbow→wrist)
 
     // ============================================================
     // AVATAR BODY
@@ -83,21 +78,16 @@
     leftShoulder.position.set(0.22, 0, 0);
     leftShoulder.rotation.order = 'YXZ'; // yaw first, then pitch
 
-    // Link lengths
-    const L1 = 0.35; // upper arm
-    const L2 = 0.30; // forearm
-    const Lhand = 0.10; // hand
-
-    // DISTINCT JOINTS –sphere at exact joint center
+    // DISTINCT JOINTS – sphere at exact joint center
     const leftJointS = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 12), jointMat);
     leftShoulder.add(leftJointS);
 
-    // upper arm link (vertical cylinder centered between shoulder and elbow)
+    // upper arm link (vertical cylinder)
     const leftUpper = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.035, L1, 12), skinMat);
     leftUpper.position.y = -L1/2;
     leftShoulder.add(leftUpper);
 
-    // elbow joint sphere at elbow center
+    // elbow joint sphere
     leftElbow.position.y = -L1;
     const leftJointE = new THREE.Mesh(new THREE.SphereGeometry(0.04, 12, 12), jointMat);
     leftElbow.add(leftJointE);
@@ -248,11 +238,8 @@
       const yaw = Math.atan2(dx, -dz);
       shoulderGrp.rotation.y = yaw;
 
-      // Link lengths
-      const L1 = 0.35; // upper arm
-      const L2 = 0.30; // forearm
-
-      // Clamp reach
+       // Link lengths (use closure-captured L1, L2)
+       // Clamp reach
       let d = Math.sqrt(horiz*horiz + down*down);
       const maxReach = L1 + L2;
       if (d > maxReach) {
@@ -411,15 +398,15 @@
         avatar.position.x = camPos.x;
         avatar.position.z = camPos.z;
         avatar.position.y = 0; // feet at world Y=0
-      }
+        }
 
-       renderer.render(scene, camera);
-     });
-   } catch (e) {
-     console.error(e);
-     const el = document.getElementById('status');
-     if (el) el.textContent = 'FATAL: ' + e.message;
-   }
- </script>
+        renderer.render(scene, camera);
+      });
+    } catch (e) {
+      console.error(e);
+      const el = document.getElementById('status');
+      if (el) el.textContent = 'FATAL: ' + e.message;
+    }
+  </script>
 </body>
 </html>
