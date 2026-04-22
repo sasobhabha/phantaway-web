@@ -147,51 +147,6 @@
     rGripper.position.y = -0.10;
     rWrist.add(rGripper);
 
-    // --- LEGS (seated: hips/knees at 90°) ---
-    const leftHip = new THREE.Group();   // pitch X
-    const leftKnee = new THREE.Group();
-    torso.add(leftHip);
-    leftHip.add(leftKnee);
-
-    leftHip.position.set(0.1, -0.05, 0); // hip joint slightly below torso
-    leftHip.add(new THREE.Mesh(new THREE.SphereGeometry(0.055, 12, 12), jointMat));
-    const leftThigh = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.055, 0.45, 12), pantsMat);
-    leftThigh.position.y = -0.225;
-    leftHip.add(leftThigh);
-    leftKnee.position.y = -0.45;
-    leftKnee.add(new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 12), jointMat));
-    const leftShin = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.045, 0.45, 12), pantsMat);
-    leftShin.position.y = -0.225;
-    leftKnee.add(leftShin);
-    const leftFoot = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 0.14), skinMat);
-    leftFoot.position.set(0, -0.225, 0.05);
-    leftKnee.add(leftFoot);
-
-    const rightHip = new THREE.Group();
-    const rightKnee = new THREE.Group();
-    torso.add(rightHip);
-    rightHip.add(rightKnee);
-
-    rightHip.position.set(-0.1, -0.05, 0);
-    rightHip.add(new THREE.Mesh(new THREE.SphereGeometry(0.055, 12, 12), jointMat));
-    const rightThigh = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.055, 0.45, 12), pantsMat);
-    rightThigh.position.y = -0.225;
-    rightHip.add(rightThigh);
-    rightKnee.position.y = -0.45;
-    rightKnee.add(new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 12), jointMat));
-    const rightShin = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.045, 0.45, 12), pantsMat);
-    rightShin.position.y = -0.225;
-    rightKnee.add(rightShin);
-    const rightFoot = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 0.14), skinMat);
-    rightFoot.position.set(0, -0.225, 0.05);
-    rightKnee.add(rightFoot);
-
-    // Seated pose: hips and knees at 90°
-    leftHip.rotation.x = Math.PI/2;
-    leftKnee.rotation.x = Math.PI/2;
-    rightHip.rotation.x = Math.PI/2;
-    rightKnee.rotation.x = Math.PI/2;
-
     // Ground grid
     const grid = new THREE.GridHelper(10, 10, 0x444444, 0x333333);
     grid.position.y = 0.01;
@@ -200,20 +155,10 @@
     // ============================================================
     // VR INPUT
     // ============================================================
-    const ctrlL = renderer.xr.getController(1);
-    const ctrlR = renderer.xr.getController(0);
-    if (ctrlL) {
-      scene.add(ctrlL);
-      const vis = new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.02,0.1,6), new THREE.MeshStandardMaterial({color:0x88bbff}));
-      vis.rotation.x = Math.PI/2;
-      ctrlL.add(vis);
-    }
-    if (ctrlR) {
-      scene.add(ctrlR);
-      const vis = new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.02,0.1,6), new THREE.MeshStandardMaterial({color:0x88bbff}));
-      vis.rotation.x = Math.PI/2;
-      ctrlR.add(vis);
-    }
+    const ctrlL = renderer.xr.getController(0);
+    const ctrlR = renderer.xr.getController(1);
+    scene.add(ctrlL);
+    scene.add(ctrlR);
 
     let vrActive = false;
     let trackedHandL = null;
