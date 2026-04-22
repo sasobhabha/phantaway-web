@@ -2,9 +2,9 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>WebXR Test – Realistic Arm (No Rotation)</title>
+  <title>WebXR Human Arm – Attached to Controller</title>
   <style>
-    body { margin: 0; overflow: hidden; }
+    body { margin: 0; overflow: hidden; background: #111; }
   </style>
 </head>
 <body>
@@ -14,92 +14,144 @@ import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
 import { VRButton } from 'https://unpkg.com/three@0.160.0/examples/jsm/webxr/VRButton.js';
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x202020);
+scene.background = new THREE.Color(0x111111);
 
-const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 100);
-camera.position.set(0, 1.6, 1.5);
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 100);
+camera.position.set(0, 1.6, 0);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.xr.enabled = true;
 renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.xr.enabled = true;
 document.body.appendChild(renderer.domElement);
 document.body.appendChild(VRButton.createButton(renderer));
 
-const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
-scene.add(light);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x222222, 1.3));
+scene.add(new THREE.DirectionalLight(0xffffff, 0.6).position.set(2, 4, 1));
 
-// -----------------------------------------------------
-// REALISTIC PROCEDURAL ARM (no GLB, no rotation)
-// -----------------------------------------------------
-const arm = new THREE.Group();
-
-// Skin material
 const skin = new THREE.MeshStandardMaterial({
-  color: 0xffd2b8,
-  roughness: 0.6,
-  metalness: 0.1
+  color: 0xffc7a3,
+  roughness: 0.45,
+  metalness: 0.05
 });
 
-// Shoulder
-const shoulder = new THREE.Mesh(
-  new THREE.SphereGeometry(0.12, 32, 32),
-  skin
-);
-shoulder.position.set(0, 1.7, -1);
-arm.add(shoulder);
+// -----------------------------------------------------
+// HELPERS
+// -----------------------------------------------------
+function ellipticalSegment(length, rx, ry) {
+  const geo = new THREE.CylinderGeometry(1, 1, length, 32);
+  geo.translate(0, -length / 2, 0); // pivot at top
+  const mesh = new THREE.Mesh(geo, skin);
+  mesh.scale.set(rx, ry, 1);
+  return mesh;
+}
 
-// Upper arm
-const upperArm = new THREE.Mesh(
-  new THREE.CylinderGeometry(0.09, 0.11, 0.35, 32),
-  skin
-);
-upperArm.position.set(0, 1.5, -1);
-upperArm.rotation.z = Math.PI / 12;
-arm.add(upperArm);
-
-// Elbow
-const elbow = new THREE.Mesh(
-  new THREE.SphereGeometry(0.08, 32, 32),
-  skin
-);
-elbow.position.set(0, 1.33, -1);
-arm.add(elbow);
-
-// Forearm
-const forearm = new THREE.Mesh(
-  new THREE.CylinderGeometry(0.06, 0.08, 0.32, 32),
-  skin
-);
-forearm.position.set(0, 1.15, -1);
-forearm.rotation.z = Math.PI / 8;
-arm.add(forearm);
-
-// Wrist
-const wrist = new THREE.Mesh(
-  new THREE.SphereGeometry(0.06, 32, 32),
-  skin
-);
-wrist.position.set(0, 1.0, -1);
-arm.add(wrist);
-
-// Hand
-const hand = new THREE.Mesh(
-  new THREE.BoxGeometry(0.12, 0.18, 0.05),
-  skin
-);
-hand.position.set(0, 0.88, -1);
-hand.rotation.x = Math.PI / 12;
-arm.add(hand);
-
-scene.add(arm);
+function joint(rx, ry, rz) {
+  const geo = new THREE.SphereGeometry(1, 32, 32);
+  const mesh = new THREE.Mesh(geo, skin);
+  mesh.scale.set(rx, ry, rz);
+  return mesh;
+}
 
 // -----------------------------------------------------
-// ANIMATION LOOP (no rotation)
+// ARM HIERARCHY (EXACT robotic-arm structure)
 // -----------------------------------------------------
+const base = new THREE.Group();
+scene.add(base);
+
+const shoulderGroup = new THREE.Group();
+base.add(shoulderGroup);
+
+const shoulder = joint(0.18, 0.16, 0.17);
+shoulderGroup.add(shoulder);
+
+const upperLen = 0.40;
+const upperArm = ellipticalSegment(upperLen, 0.11, 0.09);
+upperArm.rotation.z = -Math.PI / 10;
+shoulderGroup.add(upperArm);
+
+const elbowGroup = new THREE.Group();
+elbowGroup.position.set(
+  Math.sin(Math.PI / 10) * upperLen,
+  -Math.cos(Math.PI / 10) * upperLen,
+  0
+);
+shoulderGroup.add(elbowGroup);
+
+const elbow = joint(0.09, 0.08, 0.08);
+elbowGroup.add(elbow);
+
+const foreLen = 0.38;
+const forearm = ellipticalSegment(foreLen, 0.09, 0.075);
+forearm.rotation.z = -Math.PI / 6;
+elbowGroup.add(forearm);
+
+const wristGroup = new THREE.Group();
+wristGroup.position.set(
+  Math.sin(Math.PI / 6) * foreLen,
+  -Math.cos(Math.PI / 6) * foreLen,
+  0
+);
+elbowGroup.add(wristGroup);
+
+const wrist = joint(0.07, 0.06, 0.06);
+wristGroup.add(wrist);
+
+const handGroup = new THREE.Group();
+handGroup.position.set(0.06, -0.03, 0);
+handGroup.rotation.z = -Math.PI / 16;
+wristGroup.add(handGroup);
+
+const palmGeo = new THREE.BoxGeometry(1, 1, 1);
+const palm = new THREE.Mesh(palmGeo, skin);
+palm.scale.set(0.13, 0.20, 0.07);
+handGroup.add(palm);
+
+function finger(x, y, z, length) {
+  const g = new THREE.BoxGeometry(1, 1, 1);
+  const f = new THREE.Mesh(g, skin);
+  f.scale.set(0.035, length, 0.035);
+  f.position.set(x, y, z);
+  f.rotation.z = -Math.PI / 18;
+  return f;
+}
+
+handGroup.add(finger(0.05, -0.12, -0.025, 0.16));
+handGroup.add(finger(0.07, -0.12,  0.00,   0.17));
+handGroup.add(finger(0.05, -0.12,  0.025,  0.16));
+handGroup.add(finger(0.03, -0.12,  0.05,   0.15));
+
+const thumbGeo = new THREE.BoxGeometry(1, 1, 1);
+const thumb = new THREE.Mesh(thumbGeo, skin);
+thumb.scale.set(0.04, 0.12, 0.04);
+thumb.position.set(-0.015, -0.03, -0.055);
+thumb.rotation.z = -Math.PI / 2.8;
+thumb.rotation.y = -Math.PI / 10;
+handGroup.add(thumb);
+
+// -----------------------------------------------------
+// VR CONTROLLER → ARM ATTACHMENT
+// -----------------------------------------------------
+let controller = renderer.xr.getController(0);
+scene.add(controller);
+
+// Shoulder stays fixed relative to head
+shoulderGroup.position.set(0.25, 1.55, -0.2);
+
+// Controller drives wrist
 renderer.setAnimationLoop(() => {
+  if (controller) {
+    wristGroup.position.copy(controller.position);
+    wristGroup.quaternion.copy(controller.quaternion);
+  }
+
   renderer.render(scene, camera);
 });
 
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
 </script>
 
 </body>
