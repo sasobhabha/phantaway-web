@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>WebXR Test – Realistic Arm (No Rotation)</title>
+  <title>WebXR Test – Avatar with Robotic Arm (Controller Following)</title>
   <style>
     body { margin: 0; overflow: hidden; }
     #controls {
@@ -56,12 +56,22 @@
       cursor: pointer;
       border-radius: 50%;
     }
+    #status {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      color: #88bbff;
+      font-size: 12px;
+      background: rgba(0,0,0,0.7);
+      padding: 8px 12px;
+      border-radius: 6px;
+    }
   </style>
 </head>
 <body>
 
 <div id="controls">
-  <h2 style="margin: 0 0 16px 0; font-size: 18px; color: #88bbff;">Manual Controls</h2>
+  <h2 style="margin: 0 0 16px 0; font-size: 18px; color: #88bbff;">Controller Following Robotic Arm</h2>
   <div class="slider-group">
     <label for="joint1-slider">Joint 1 (Base Yaw)</label>
     <input type="range" min="-180" max="180" value="0" class="slider" id="joint1-slider">
@@ -78,18 +88,22 @@
     <label for="joint4-slider">Joint 4 (Wrist Yaw)</label>
     <input type="range" min="-180" max="180" value="0" class="slider" id="joint4-slider">
   </div>
+  <p style="font-size: 11px; color: #aaa; margin-top: 12px;">
+    Sliders disabled when controller active. Use VR controller to move arm.
+  </p>
 </div>
+
+<div id="status">Initializing...</div>
 
 <script type="module">
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
 import { VRButton } from 'https://unpkg.com/three@0.160.0/examples/jsm/webxr/VRButton.js';
-import { OrbitControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js';
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x202020);
 
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 100);
-camera.position.set(3, 2, 3);
+camera.position.set(0, 1.6, 1.5);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.xr.enabled = true;
@@ -101,110 +115,304 @@ const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
 scene.add(light);
 
 // Materials
-const baseMaterial = new THREE.MeshStandardMaterial({ color: 0x4a4a4a, roughness: 0.5, metalness: 0.3 });
+const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.6, metalness: 0.1 });
 const jointMaterial = new THREE.MeshStandardMaterial({ color: 0xffa500, roughness: 0.4, metalness: 0.2 });
 const linkMaterial = new THREE.MeshStandardMaterial({ color: 0x3399ff, roughness: 0.4, metalness: 0.2 });
+const handMaterial = new THREE.MeshStandardMaterial({ color: 0xffd2b8, roughness: 0.6, metalness: 0.1 });
 
-// Hierarchical robotic arm structure
-const baseGroup = new THREE.Group();           // Joint 1 rotation (Y-axis)
-const shoulderGroup = new THREE.Group();       // Joint 2 rotation (X-axis)
-const elbowGroup = new THREE.Group();          // Joint 3 rotation (X-axis)
-const wristGroup = new THREE.Group();          // Joint 4 rotation (Y-axis)
+// --- User Avatar Model ---
+const avatarGroup = new THREE.Group();
+scene.add(avatarGroup);
 
-scene.add(baseGroup);
+// Torso
+const torsoGeom = new THREE.CylinderGeometry(0.25, 0.2, 0.6, 16);
+const torso = new THREE.Mesh(torsoGeom, bodyMaterial);
+torso.position.y = 0.9; // head roughly at 1.4m
+avatarGroup.add(torso);
 
-// Static base platform
-const baseGeometry = new THREE.CylinderGeometry(1, 1.2, 0.5, 32);
-const baseMesh = new THREE.Mesh(baseGeometry, baseMaterial);
-baseMesh.position.y = 0.25;
-baseGroup.add(baseMesh);
+// Head
+const headGeom = new THREE.SphereGeometry(0.12, 16, 16);
+const head = new THREE.Mesh(headGeom, bodyMaterial);
+head.position.y = 1.35;
+avatarGroup.add(head);
 
-// Joint 1 sphere (base turret)
-const joint1Sphere = new THREE.Mesh(new THREE.SphereGeometry(0.5, 32, 32), jointMaterial);
-joint1Sphere.position.y = 0.5;
+// Pelvis
+const pelvisGeom = new THREE.CylinderGeometry(0.25, 0.3, 0.25, 16);
+const pelvis = new THREE.Mesh(pelvisGeom, bodyMaterial);
+pelvis.position.y = 0.35;
+avatarGroup.add(pelvis);
+
+// Legs (simple)
+const legGeom = new THREE.CylinderGeometry(0.1, 0.1, 0.4, 12);
+const leftLeg = new THREE.Mesh(legGeom, bodyMaterial);
+leftLeg.position.set(0.12, 0.1, 0);
+avatarGroup.add(leftLeg);
+
+const rightLeg = new THREE.Mesh(legGeom, bodyMaterial);
+rightLeg.position.set(-0.12, 0.1, 0);
+avatarGroup.add(rightLeg);
+
+// Left arm (simple, no robotic arm)
+const leftUpperArmGeom = new THREE.CylinderGeometry(0.06, 0.05, 0.3, 12);
+const leftUpperArm = new THREE.Mesh(leftUpperArmGeom, bodyMaterial);
+leftUpperArm.position.set(0.32, 0.85, 0);
+leftUpperArm.rotation.z = -Math.PI / 6;
+avatarGroup.add(leftUpperArm);
+
+const leftForearmGeom = new THREE.CylinderGeometry(0.05, 0.04, 0.25, 12);
+const leftForearm = new THREE.Mesh(leftForearmGeom, bodyMaterial);
+leftForearm.position.set(0.41, 0.65, 0);
+leftForearm.rotation.z = -Math.PI / 8;
+avatarGroup.add(leftForearm);
+
+const leftHand = new THREE.Mesh(new THREE.SphereGeometry(0.04, 12, 12), handMaterial);
+leftHand.position.set(0.48, 0.5, 0);
+avatarGroup.add(leftHand);
+
+// --- Robotic Arm Structure (Right Arm) ---
+const baseGroup = new THREE.Group();
+const shoulderGroup = new THREE.Group();
+const elbowGroup = new THREE.Group();
+const wristGroup = new THREE.Group();
+
+avatarGroup.add(baseGroup);
+
+// Attach base to avatar's right shoulder area
+baseGroup.position.set(-0.32, 0.85, 0); // Right shoulder position
+baseGroup.rotation.z = Math.PI / 8; // Offset angle to extend outward
+
+// Modified structures to match the referenced arm model geometry (from the file)
+// Joint 1 sphere (base turret) - smaller, attached to body
+const joint1Sphere = new THREE.Mesh(new THREE.SphereGeometry(0.15, 16, 16), jointMaterial);
+joint1Sphere.position.y = 0;
 baseGroup.add(joint1Sphere);
 
-// Shoulder group attached to base
-shoulderGroup.position.y = 0.5;
+// Shoulder group - rotates around Z (pitch for arm up/down)
+shoulderGroup.position.y = 0;
 baseGroup.add(shoulderGroup);
 
-// Lower arm link (from base to shoulder)
-const lowerArmGeom = new THREE.CylinderGeometry(0.2, 0.2, 1.5, 32);
+// Lower arm link (from base to elbow joint)
+const lowerArmGeom = new THREE.CylinderGeometry(0.08, 0.08, 0.6, 16);
 const lowerArm = new THREE.Mesh(lowerArmGeom, linkMaterial);
-lowerArm.position.y = 0.75;
+lowerArm.position.y = 0.3;
 shoulderGroup.add(lowerArm);
 
-// Joint 2 sphere (shoulder)
-const joint2Sphere = new THREE.Mesh(new THREE.SphereGeometry(0.4, 32, 32), jointMaterial);
-joint2Sphere.position.y = 1.5;
+// Joint 2 sphere (shoulder/elbow 1) - at end of lower arm
+const joint2Sphere = new THREE.Mesh(new THREE.SphereGeometry(0.1, 16, 16), jointMaterial);
+joint2Sphere.position.y = 0.6;
 shoulderGroup.add(joint2Sphere);
 
-// Elbow group attached to shoulder
-elbowGroup.position.y = 1.5;
+// Elbow group
+elbowGroup.position.y = 0.6;
 shoulderGroup.add(elbowGroup);
 
-// Upper arm link (from shoulder to elbow)
-const upperArmGeom = new THREE.CylinderGeometry(0.15, 0.15, 2, 32);
+// Upper arm link (from elbow to wrist)
+const upperArmGeom = new THREE.CylinderGeometry(0.06, 0.06, 0.6, 16);
 const upperArm = new THREE.Mesh(upperArmGeom, linkMaterial);
-upperArm.position.y = 1.0;
+upperArm.position.y = 0.3;
 elbowGroup.add(upperArm);
 
-// Joint 3 sphere (elbow)
-const joint3Sphere = new THREE.Mesh(new THREE.SphereGeometry(0.35, 32, 32), jointMaterial);
-joint3Sphere.position.y = 2.0;
+// Joint 3 sphere (elbow/wrist)
+const joint3Sphere = new THREE.Mesh(new THREE.SphereGeometry(0.08, 16, 16), jointMaterial);
+joint3Sphere.position.y = 0.6;
 elbowGroup.add(joint3Sphere);
 
-// Wrist group attached to elbow
-wristGroup.position.y = 2.0;
+// Wrist group
+wristGroup.position.y = 0.6;
 elbowGroup.add(wristGroup);
 
-// Forearm link (from elbow to wrist)
-const forearmGeom = new THREE.CylinderGeometry(0.12, 0.12, 1.5, 32);
+// Forearm link (from wrist to end effector)
+const forearmGeom = new THREE.CylinderGeometry(0.04, 0.04, 0.4, 16);
 const forearm = new THREE.Mesh(forearmGeom, linkMaterial);
-forearm.position.y = 0.75;
+forearm.position.y = 0.2;
 wristGroup.add(forearm);
 
-// Joint 4 sphere (wrist)
-const joint4Sphere = new THREE.Mesh(new THREE.SphereGeometry(0.3, 32, 32), jointMaterial);
-joint4Sphere.position.y = 1.5;
-wristGroup.add(joint4Sphere);
-
 // End effector (gripper)
-const endEffector = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.3, 0.15), linkMaterial);
-endEffector.position.y = 1.65;
+const endEffector = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.2, 0.06), linkMaterial);
+endEffector.position.y = 0.4;
 wristGroup.add(endEffector);
 
-// Grid helper for reference
+// Grid helper
 const gridHelper = new THREE.GridHelper(10, 10, 0x444444, 0x333333);
 gridHelper.position.y = 0.01;
 scene.add(gridHelper);
 
-// Controls
+// VR Controller setup
+const controllerModelFactory = {
+  load: () => {}
+};
+
+// Right controller (for robotic arm)
+const rightController = renderer.xr.getController(0);
+scene.add(rightController);
+
+// Right controller model (simple visual)
+const controllerGeom = new THREE.CylinderGeometry(0.02, 0.02, 0.1, 8);
+const controllerMesh = new THREE.Mesh(controllerGeom, new THREE.MeshStandardMaterial({ color: 0x88bbff }));
+controllerMesh.rotation.x = Math.PI / 2;
+rightController.add(controllerMesh);
+
+// VR Controller object for following
+let controllerActive = false;
+let lastControllerPos = new THREE.Vector3();
+let lastControllerQuat = new THREE.Quaternion();
+
+// Set initial arm pose (relaxed)
+baseGroup.rotation.z = 0;
+shoulderGroup.rotation.x = 0;
+elbowGroup.rotation.x = 0;
+wristGroup.rotation.z = 0;
+wristGroup.rotation.y = 0;
+
+// Convert spherical joint angles to arm segments
+function updateArmFromAngles(baseYaw, shoulderPitch, elbowPitch, wristPitch) {
+  baseGroup.rotation.y = baseYaw;
+  shoulderGroup.rotation.x = shoulderPitch;
+  elbowGroup.rotation.x = elbowPitch;
+  wristGroup.rotation.z = wristPitch;
+}
+
+// Compute IK for 3-joint planar arm (shoulder, elbow, wrist) to match controller position
+function computeArmIK(targetPos) {
+  // Local position relative to base (shoulder)
+  const basePos = baseGroup.getWorldPosition(new THREE.Vector3());
+  const offset = new THREE.Vector3().subVectors(targetPos, basePos);
+  
+  // Project to XZ plane for base yaw (horizontal turn)
+  const baseYaw = Math.atan2(offset.x, -offset.z);
+  
+  // Distance from base to target in vertical plane
+  const horizontalDist = Math.sqrt(offset.x * offset.x + offset.z * offset.z);
+  const verticalDist = offset.y;
+  
+  // Arm lengths
+  const L1 = 0.6; // lower arm (shoulder to elbow)
+  const L2 = 0.6; // upper arm (elbow to wrist)
+  
+  // Use law of cosines to find elbow angle
+  const D = Math.min(L1 + L2 - 0.1, Math.max(horizontalDist * horizontalDist + verticalDist * verticalDist, 0.01));
+  const cosElbow = (L1 * L1 + L2 * L2 - D) / (2 * L1 * L2);
+  const elbowAngle = Math.PI - Math.acos(Math.max(-1, Math.min(1, cosElbow)));
+  
+  // Find shoulder and wrist angles
+  const cosShoulder = (L1 * L1 + D - L2 * L2) / (2 * L1 * Math.sqrt(D));
+  const shoulderToElbow = Math.atan2(verticalDist, horizontalDist) + Math.acos(Math.max(-1, Math.min(1, cosShoulder)));
+  
+  const shoulderPitch = -shoulderToElbow + Math.PI/2;
+  const elbowPitch = -(Math.PI - elbowAngle) + Math.PI/2;
+  
+  // Wrist pitch to orient end effector downward (simple heuristic)
+  const wristPitch = -elbowPitch - shoulderPitch + Math.PI/2;
+  
+  return { baseYaw, shoulderPitch, elbowPitch, wristPitch };
+}
+
+// Apply controller transformation to IK target
+function updateIKFromController(controller) {
+  // Get controller's world position and orientation
+  const controllerPos = new THREE.Vector3();
+  const controllerQuat = new THREE.Quaternion();
+  controller.getWorldPosition(controllerPos);
+  controller.getWorldQuaternion(controllerQuat);
+  
+  // Offset from controller to desired end effector position
+  // The end effector should be in front of and slightly below the controller
+  const offset = new THREE.Vector3(0, -0.1, -0.15);
+  offset.applyQuaternion(controllerQuat);
+  const targetPos = controllerPos.clone().add(offset);
+  
+  // Compute IK
+  const angles = computeArmIK(targetPos);
+  
+  // Apply angles
+  baseGroup.rotation.y = angles.baseYaw;
+  shoulderGroup.rotation.x = angles.shoulderPitch;
+  elbowGroup.rotation.x = angles.elbowPitch;
+  
+  // Set wrist orientation to follow controller orientation, with some damping
+  const euler = new THREE.Euler().setFromQuaternion(controllerQuat, 'YXZ');
+  wristGroup.rotation.z = euler.x;
+  wristGroup.rotation.y = euler.y;
+}
+
+// Controls (sliders - disabled when controller active)
 const joint1Slider = document.getElementById('joint1-slider');
 const joint2Slider = document.getElementById('joint2-slider');
 const joint3Slider = document.getElementById('joint3-slider');
 const joint4Slider = document.getElementById('joint4-slider');
 
 joint1Slider.addEventListener('input', (e) => {
-  baseGroup.rotation.y = THREE.MathUtils.degToRad(e.target.value);
+  if (!controllerActive) {
+    baseGroup.rotation.y = THREE.MathUtils.degToRad(e.target.value);
+  }
 });
 
 joint2Slider.addEventListener('input', (e) => {
-  shoulderGroup.rotation.x = THREE.MathUtils.degToRad(e.target.value);
+  if (!controllerActive) {
+    shoulderGroup.rotation.x = THREE.MathUtils.degToRad(e.target.value);
+  }
 });
 
 joint3Slider.addEventListener('input', (e) => {
-  elbowGroup.rotation.x = THREE.MathUtils.degToRad(e.target.value);
+  if (!controllerActive) {
+    elbowGroup.rotation.x = THREE.MathUtils.degToRad(e.target.value);
+  }
 });
 
 joint4Slider.addEventListener('input', (e) => {
-  wristGroup.rotation.y = THREE.MathUtils.degToRad(e.target.value);
+  if (!controllerActive) {
+    wristGroup.rotation.z = THREE.MathUtils.degToRad(e.target.value);
+    wristGroup.rotation.y = 0;
+  }
 });
 
-// -----------------------------------------------------
-// ANIMATION LOOP
-// -----------------------------------------------------
-renderer.setAnimationLoop(() => {
+const statusDiv = document.getElementById('status');
+
+// Animation loop
+let session = null;
+
+function onSessionStart() {
+  controllerActive = true;
+  statusDiv.textContent = 'Controller active - Arm tracking controller';
+  joint1Slider.disabled = true;
+  joint2Slider.disabled = true;
+  joint3Slider.disabled = true;
+  joint4Slider.disabled = true;
+}
+
+function onSessionEnd() {
+  controllerActive = false;
+  statusDiv.textContent = 'Session ended - Using manual sliders';
+  joint1Slider.disabled = false;
+  joint2Slider.disabled = false;
+  joint3Slider.disabled = false;
+  joint4Slider.disabled = false;
+}
+
+renderer.xr.addEventListener('sessionstart', onSessionStart);
+renderer.xr.addEventListener('sessionend', onSessionEnd);
+
+renderer.setAnimationLoop((time, frame) => {
+  // Update slider values from arm if in manual mode
+  if (!controllerActive) {
+    const baseDeg = THREE.MathUtils.radToDeg(baseGroup.rotation.y);
+    joint1Slider.value = baseDeg;
+    
+    const shoulderDeg = THREE.MathUtils.radToDeg(shoulderGroup.rotation.x);
+    joint2Slider.value = shoulderDeg;
+    
+    const elbowDeg = THREE.MathUtils.radToDeg(elbowGroup.rotation.x);
+    joint3Slider.value = elbowDeg;
+    
+    const wristDeg = THREE.MathUtils.radToDeg(wristGroup.rotation.z);
+    joint4Slider.value = wristDeg;
+  }
+  
+  // If controller is active and referenced, update IK
+  if (controllerActive && rightController.visible) {
+    updateIKFromController(rightController);
+  }
+  
   renderer.render(scene, camera);
 });
 </script>
