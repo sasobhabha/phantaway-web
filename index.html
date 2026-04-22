@@ -22,10 +22,19 @@
   <div id="status">Initializing…</div>
   <button id="vr-button">Enter VR (Hand Tracking)</button>
 
-  <script type="module">
-    import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
+   <script type="module">
+     let THREE;
+     try {
+       const mod = await import('https://unpkg.com/three@0.160.0/build/three.module.js');
+       THREE = mod;
+     } catch (e) {
+       console.error(e);
+       const el = document.getElementById('status');
+       if (el) el.textContent = 'Failed to load Three.js: ' + e.message;
+       throw e;
+     }
 
-    const scene = new THREE.Scene();
+     try {
     scene.background = new THREE.Color(0x202020);
 
     const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 100);
@@ -353,7 +362,10 @@
 
     renderer.setAnimationLoop((time, frame) => {
       if (vrActive && frame) {
-        if (!refSpace) refSpace = renderer.xr.getReferenceSpace();
+        if (!refSpace) {
+          refSpace = renderer.xr.getReferenceSpace();
+          if (!refSpace) return;
+        }
 
         // --- Left arm direct driving ---
         if (trackedHandL && trackedHandL.get('wrist')) {
@@ -365,8 +377,10 @@
             updateLeftArmFromSource(pos, quat);
           }
         } else if (ctrlL && ctrlL.visible) {
-          ctrlL.getWorldPosition( const lpos = new THREE.Vector3() );
-          ctrlL.getWorldQuaternion( const lquat = new THREE.Quaternion() );
+          const lpos = new THREE.Vector3();
+          ctrlL.getWorldPosition(lpos);
+          const lquat = new THREE.Quaternion();
+          ctrlL.getWorldQuaternion(lquat);
           updateLeftArmFromSource(lpos, lquat);
         }
 
@@ -380,8 +394,10 @@
             mirrorLeftToRightArm(pos, quat);
           }
         } else if (ctrlL && ctrlL.visible) {
-          ctrlL.getWorldPosition( const lpos = new THREE.Vector3() );
-          ctrlL.getWorldQuaternion( const lquat = new THREE.Quaternion() );
+          const lpos = new THREE.Vector3();
+          ctrlL.getWorldPosition(lpos);
+          const lquat = new THREE.Quaternion();
+          ctrlL.getWorldQuaternion(lquat);
           mirrorLeftToRightArm(lpos, lquat);
         }
 
@@ -397,8 +413,13 @@
         avatar.position.y = 0; // feet at world Y=0
       }
 
-      renderer.render(scene, camera);
-    });
-  </script>
+       renderer.render(scene, camera);
+     });
+   } catch (e) {
+     console.error(e);
+     const el = document.getElementById('status');
+     if (el) el.textContent = 'FATAL: ' + e.message;
+   }
+ </script>
 </body>
 </html>
