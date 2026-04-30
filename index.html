@@ -34,9 +34,22 @@
   </div>
   <button id="vr-button">Enter VR (Hand Tracking)</button>
 
-    <script type="module">
-      try {
-        const THREE = await import('https://unpkg.com/three@0.160.0/build/three.module.js');
+     <script type="module">
+        // Set up UI controls immediately (before THREE loads)
+        const statusEl = document.getElementById('status');
+        const vrBtn = document.getElementById('vr-button');
+        const missingSel = document.getElementById('missing-side');
+        const ctrlSel = document.getElementById('controller-side');
+
+        function setupLegMirrorFromSelections() {
+          // No-op until after scene is created; we'll call it again in init
+        }
+
+        // Button click handler will be set up after scene is ready
+        // (set upVRButton() call is at the end of initialization)
+
+       try {
+         const THREE = await import('https://unpkg.com/three@0.160.0/build/three.module.js');
         // --- scene setup ---
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x202020);
@@ -209,33 +222,33 @@
     grid.position.y = 0.01;
     scene.add(grid);
 
-    // ============================================================
-    // VR INPUT
-    // ============================================================
-    const ctrlL = renderer.xr.getController(0);
-    const ctrlR = renderer.xr.getController(1);
-    if (ctrlL) {
-      ctrlL.visible = true;
-      scene.add(ctrlL);
-      const vis = new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.02,0.1,6), new THREE.MeshStandardMaterial({color:0x88bbff}));
-      vis.rotation.x = Math.PI/2;
-      ctrlL.add(vis);
-    }
-    if (ctrlR) {
-      ctrlR.visible = true;
-      scene.add(ctrlR);
-      const vis = new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.02,0.1,6), new THREE.MeshStandardMaterial({color:0x88bbff}));
-      vis.rotation.x = Math.PI/2;
-      ctrlR.add(vis);
-    }
+     // ============================================================
+      // VR INPUT
+      // ============================================================
+      const ctrlL = renderer.xr.getController(0);
+      const ctrlR = renderer.xr.getController(1);
+      if (ctrlL) {
+        ctrlL.visible = true;
+        scene.add(ctrlL);
+        const vis = new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.02,0.1,6), new THREE.MeshStandardMaterial({color:0x88bbff}));
+        vis.rotation.x = Math.PI/2;
+        ctrlL.add(vis);
+      }
+      if (ctrlR) {
+        ctrlR.visible = true;
+        scene.add(ctrlR);
+        const vis = new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.02,0.1,6), new THREE.MeshStandardMaterial({color:0x88bbff}));
+        vis.rotation.x = Math.PI/2;
+        ctrlR.add(vis);
+      }
 
-    let vrActive = false;
-    let trackedHandL = null;
+      let vrActive = false;
+      let trackedHandL = null;
 
-    const statusEl = document.getElementById('status');
+      const statusEl = document.getElementById('status');
 
       // ============================================================
-      // LEG IK SOLVER (2-DOF: hip pitch X, knee pitch X)  
+      // LEG IK Solver and mirror setup
       // ============================================================
       function solveLegIK(hipGrp, kneeGrp, footGrp, targetWorld) {
         const hipWorld = new THREE.Vector3();
@@ -254,7 +267,6 @@
         let d = Math.sqrt(horiz*horiz + down*down);
         const maxReach = THIGH + SHIN;
         if (d > maxReach) {
-          const s = maxReach / d;
           d = maxReach;
         }
 
@@ -271,11 +283,7 @@
         kneeGrp.rotation.x = kneeFlex;
       }
 
-      // Mirror leg pose: flip X, keep Y/Z. Option: mirror right→left or left→right depending on missing side & ctrl side.
-      function mirrorLegPose(srcPos, srcQuat, missingSide, ctrlSide) {
-        // missingSide = 'left' or 'right' (which arm is missing)
-        // ctrlSide = 'arm' or 'leg' (where controller is strapped)
-        // We mirror the controller's world pose across midline (flip X), keep orientation with yaw flip.
+      function mirrorLegPose(srcPos, srcQuat) {
         const mPos = new THREE.Vector3(-srcPos.x, srcPos.y, srcPos.z);
         const mQuat = srcQuat.clone();
         const flip = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), Math.PI);
@@ -283,11 +291,6 @@
         return { pos: mPos, quat: mQuat };
       }
 
-      // Determine which leg is the 'target' (the one doing the therapy work) and which is 'base' (stationary).
-      // Therapy approach:
-      // - Left Arm missing: focus left leg (or leg if controller strapped there) — mirror left→right leg.
-      // - Right Arm missing: focus right leg — mirror right→left leg.
-      // Controller side selection lets user strap controller to leg instead of arm.
       let targetLegHip = null;
       let targetLegKnee = null;
       let targetLegFoot = null;
@@ -297,10 +300,9 @@
       let mirrorLegsActive = false;
 
       function setupLegMirrorFromSelections() {
-        const missing = document.getElementById('missing-side').value; // 'left'|'right'
-        const ctrl = document.getElementById('controller-side').value; // 'arm'|'leg'
+        const missing = document.getElementById('missing-side').value;
+        const ctrl = document.getElementById('controller-side').value;
 
-        // Clear previous
         if (targetLegHip) {
           targetLegHip.rotation.x = 0;
           targetLegKnee.rotation.x = 0;
@@ -310,14 +312,7 @@
           baseLegKnee.rotation.x = Math.PI/2;
         }
 
-        // Left Arm missing → focus left leg (target). Mirror left leg to right leg.
-        // Right Arm missing → focus right leg (target). Mirror right leg to left leg.
-        // Controller side: if 'arm', we drive target leg using the arm controller (strapped to arm), mirror it.
-        //                  if 'leg', we drive target leg using leg controller (strapped to working leg), mirror it.
-        // For now we'll drive the target leg from the selected controller (arm or leg) and mirror to the other leg.
-
         if (missing === 'left') {
-          // mirror left→right: left leg is source (working), right leg is target (mirrored result)
           targetLegHip = rightHip;
           targetLegKnee = rightKnee;
           targetLegFoot = rightFoot;
@@ -325,7 +320,6 @@
           baseLegKnee = leftKnee;
           baseLegFoot = leftFoot;
         } else {
-          // mirror right→left: right leg is source, left leg is target
           targetLegHip = leftHip;
           targetLegKnee = leftKnee;
           targetLegFoot = leftFoot;
@@ -336,50 +330,63 @@
         mirrorLegsActive = true;
       }
 
-      // Elbow flexion (0 = straight)
-      const cosGamma = (L1*L1 + L2*L2 - d*d) / (2 * L1 * L2);
-      const gamma = Math.acos(Math.max(-1, Math.min(1, cosGamma)));
-      const elbowFlex = Math.PI - gamma;
+      // ============================================================
+      // ARM IK SOLVER
+      // ============================================================
+      function solveArmIK(shoulderGrp, elbowGrp, wristGrp, targetWorld) {
+        const shoulderWorld = new THREE.Vector3();
+        shoulderGrp.getWorldPosition(shoulderWorld);
 
-      // Shoulder pitch from down direction
-      const psi = Math.atan2(horiz, down);
-      const phi = Math.atan2(L2 * Math.sin(elbowFlex), L1 + L2 * Math.cos(elbowFlex));
-      const shoulderPitch = psi - phi;
+        const dx = targetWorld.x - shoulderWorld.x;
+        const dy = targetWorld.y - shoulderWorld.y;
+        const dz = targetWorld.z - shoulderWorld.z;
 
-      shoulderGrp.rotation.x = shoulderPitch;
-      elbowGrp.rotation.x = elbowFlex;
-      wristGrp.rotation.x = 0; // keep straight
-    }
+        const horiz = Math.sqrt(dx*dx + dz*dz);
+        const down = -dy;
 
-    // Mirror left hand world pose → right arm
-    function mirrorLeftToRightArm(lpos, lquat) {
-      const mPos = new THREE.Vector3(-lpos.x, lpos.y, lpos.z);
-      const mQuat = lquat.clone();
-      const flip = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), Math.PI);
-      mQuat.premultiply(flip);
-      // offset: hand extends down from wrist by 0.10, so wrist = hand - (0, -0.10,0)? Actually hand is below wrist, so to have hand tip at mirroredPos, wrist should be above by hand length.
-      // In our model, hand extends along -Y from wrist. So wristWorld = handWorld + (0, 0.10, 0) in world if no wrist rotation. But wrist may rotate. We'll approx:
-      const offset = new THREE.Vector3(0, 0.10, 0); // move up by hand length
-      offset.applyQuaternion(mQuat); // apply mirrored orientation (though yaw only)
-      const wristTarget = mPos.clone().add(offset);
-      solveArmIK(rShoulder, rElbow, rWrist, wristTarget);
-      // wrist yaw from mirrored quaternion
-      const euler = new THREE.Euler().setFromQuaternion(mQuat, 'YXZ');
-      const baseYaw = rShoulder.rotation.y;
-      rWrist.rotation.y = euler.y - baseYaw;
-    }
+        let d = Math.sqrt(horiz*horiz + down*down);
+        const maxReach = L1 + L2;
+        if (d > maxReach) {
+          const s = maxReach / d;
+          d = maxReach;
+        }
 
-    // Update left arm directly from hand/controller
-    function updateLeftArmFromSource(pos, quat) {
-      // target for wrist: we approximate wrist = hand pos + (0, 0.10, 0)
-      const offset = new THREE.Vector3(0, 0.10, 0);
-      offset.applyQuaternion(quat);
-      const wristTarget = pos.clone().add(offset);
-      solveArmIK(leftShoulder, leftElbow, leftWrist, wristTarget);
-      const euler = new THREE.Euler().setFromQuaternion(quat, 'YXZ');
-      const baseYaw = leftShoulder.rotation.y;
-      leftWrist.rotation.y = euler.y - baseYaw;
-    }
+        const cosGamma = (L1*L1 + L2*L2 - d*d) / (2 * L1 * L2);
+        const gamma = Math.acos(Math.max(-1, Math.min(1, cosGamma)));
+        const elbowFlex = Math.PI - gamma;
+
+        const psi = Math.atan2(horiz, down);
+        const phi = Math.atan2(L2 * Math.sin(elbowFlex), L1 + L2 * Math.cos(elbowFlex));
+        const shoulderPitch = psi - phi;
+
+        shoulderGrp.rotation.x = shoulderPitch;
+        elbowGrp.rotation.x = elbowFlex;
+        wristGrp.rotation.x = 0;
+      }
+
+      function mirrorLeftToRightArm(lpos, lquat) {
+        const mPos = new THREE.Vector3(-lpos.x, lpos.y, lpos.z);
+        const mQuat = lquat.clone();
+        const flip = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), Math.PI);
+        mQuat.premultiply(flip);
+        const offset = new THREE.Vector3(0, 0.10, 0);
+        offset.applyQuaternion(mQuat);
+        const wristTarget = mPos.clone().add(offset);
+        solveArmIK(rShoulder, rElbow, rWrist, wristTarget);
+        const euler = new THREE.Euler().setFromQuaternion(mQuat, 'YXZ');
+        const baseYaw = rShoulder.rotation.y;
+        rWrist.rotation.y = euler.y - baseYaw;
+      }
+
+      function updateLeftArmFromSource(pos, quat) {
+        const offset = new THREE.Vector3(0, 0.10, 0);
+        offset.applyQuaternion(quat);
+        const wristTarget = pos.clone().add(offset);
+        solveArmIK(leftShoulder, leftElbow, leftWrist, wristTarget);
+        const euler = new THREE.Euler().setFromQuaternion(quat, 'YXZ');
+        const baseYaw = leftShoulder.rotation.y;
+        leftWrist.rotation.y = euler.y - baseYaw;
+      }
 
       // ============================================================
       // VR SESSION
@@ -389,192 +396,178 @@
         statusEl.textContent = 'VR started';
         session.addEventListener('inputsourceschange', onInputChange);
         onInputChange();
-        setupLegMirrorFromSelections();
-      }
-
-    function onInputChange() {
-      const session = renderer.xr.getSession();
-      if (!session) return;
-      trackedHandL = null;
-      for (const src of session.inputSources) {
-        if (src.hand && src.handedness === 'left') {
-          trackedHandL = src.hand;
-          break;
+        if (typeof setupLegMirrorFromSelections === 'function') {
+          setupLegMirrorFromSelections();
         }
       }
-      // Update status with more info
-      const handStatus = trackedHandL ? 'Hand tracking: LEFT' : 'No left hand';
-      const ctrlStatus = ctrlL ? `CtrlL visible: ${ctrlL.visible}` : 'No ctrlL';
-      statusEl.textContent = `${handStatus} | ${ctrlStatus}`;
-    }
 
-    function sessionEnd() {
-      vrActive = false;
-      trackedHandL = null;
-      statusEl.textContent = 'Session ended';
-    }
-
-    renderer.xr.addEventListener('sessionstart', (e) => sessionStart(e.session));
-    renderer.xr.addEventListener('sessionend', sessionEnd);
-
-      // ============================================================
-      // VR BUTTON
-      // ============================================================
-      const vrBtn = document.getElementById('vr-button');
-      const missingSel = document.getElementById('missing-side');
-      const ctrlSel = document.getElementById('controller-side');
-      missingSel.addEventListener('change', setupLegMirrorFromSelections);
-      ctrlSel.addEventListener('change', setupLegMirrorFromSelections);
-      vrBtn.addEventListener('click', async () => {
-        const opts = { optionalFeatures: ['hand-tracking', 'local-floor'] };
-        try {
-          const sess = await navigator.xr.requestSession('immersive-vr', opts);
-          await renderer.xr.setSession(sess);
-          vrBtn.textContent = 'Exit VR';
-          vrBtn.onclick = () => sess.end();
-        } catch (e) {
-          console.error(e);
-          alert('WebXR or hand-tracking not available on this device/browser.');
-        }
-      });
-
-    // ============================================================
-    // RENDER LOOP
-    // ============================================================
-    let refSpace = null;
-
-        renderer.setAnimationLoop((time, frame) => {
-          if (!vrActive) {
-            renderer.render(scene, camera);
-            return;
+      function onInputChange() {
+        const session = renderer.xr.getSession();
+        if (!session) return;
+        trackedHandL = null;
+        for (const src of session.inputSources) {
+          if (src.hand && src.handedness === 'left') {
+            trackedHandL = src.hand;
+            break;
           }
+        }
+        const handStatus = trackedHandL ? 'Hand tracking: LEFT' : 'No left hand';
+        const ctrlStatus = ctrlL ? `CtrlL visible: ${ctrlL.visible}` : 'No ctrlL';
+        statusEl.textContent = `${handStatus} | ${ctrlStatus}`;
+      }
 
-          if (frame) {
-            refSpace = refSpace || renderer.xr.getReferenceSpace();
-            if (!refSpace) return;
+      function sessionEnd() {
+        vrActive = false;
+        trackedHandL = null;
+        statusEl.textContent = 'Session ended';
+      }
 
-            // --- Left arm direct driving ---
-            if (trackedHandL && trackedHandL.get('wrist')) {
-              const wristJoint = trackedHandL.get('wrist');
-              const pose = frame.getJointPose(wristJoint, refSpace);
-              if (pose) {
-                const pos = new THREE.Vector3().fromArray(pose.transform.position);
-                const quat = new THREE.Quaternion().fromArray(pose.transform.orientation);
-                updateLeftArmFromSource(pos, quat);
-              }
-            } else if (ctrlL && ctrlL.visible) {
-              const lpos = new THREE.Vector3();
-              ctrlL.getWorldPosition(lpos);
-              const lquat = new THREE.Quaternion();
-              ctrlL.getWorldQuaternion(lquat);
-              updateLeftArmFromSource(lpos, lquat);
+      renderer.xr.addEventListener('sessionstart', (e) => sessionStart(e.session));
+      renderer.xr.addEventListener('sessionend', sessionEnd);
+
+      // ============================================================
+      // VR BUTTON - now properly wired after scene is ready
+      // ============================================================
+      function setupVRButton() {
+        vrBtn.addEventListener('click', async () => {
+          const opts = { optionalFeatures: ['hand-tracking', 'local-floor'] };
+          try {
+            if (!navigator.xr) {
+              throw new Error('WebXR not available in this browser');
             }
-
-            // --- Mirror to right arm ---
-            if (trackedHandL && trackedHandL.get('wrist')) {
-              const wristJoint = trackedHandL.get('wrist');
-              const pose = frame.getJointPose(wristJoint, refSpace);
-              if (pose) {
-                const pos = new THREE.Vector3().fromArray(pose.transform.position);
-                const quat = new THREE.Quaternion().fromArray(pose.transform.orientation);
-                mirrorLeftToRightArm(pos, quat);
-              }
-            } else if (ctrlL && ctrlL.visible) {
-              const lpos = new THREE.Vector3();
-              ctrlL.getWorldPosition(lpos);
-              const lquat = new THREE.Quaternion();
-              ctrlL.getWorldQuaternion(lquat);
-              mirrorLeftToRightArm(lpos, lquat);
-            }
-
-            // --- Leg mirror therapy ---
-            if (mirrorLegsActive) {
-              const missing = document.getElementById('missing-side').value;
-              const ctrlSide = document.getElementById('controller-side').value;
-              let sourcePos = null;
-              let sourceQuat = null;
-
-              // Determine source controller/limb to drive the target leg
-              // If ctrlSide is 'arm', we try to use the controller on the side of the working leg (the base/source leg)
-              // For left-arm-missing: working leg = left leg -> use left controller (ctrlL) or hand
-              // For right-arm-missing: working leg = right leg -> use right controller (ctrlR) or hand (if tracked)
-              let gotSource = false;
-
-              if (ctrlSide === 'arm') {
-                // Use arm controller for source leg movement
-                if (missing === 'left') {
-                  // working leg = left -> use left ctrl or left hand
-                  if (ctrlL && ctrlL.visible) {
-                    sourcePos = new THREE.Vector3();
-                    ctrlL.getWorldPosition(sourcePos);
-                    sourceQuat = new THREE.Quaternion();
-                    ctrlL.getWorldQuaternion(sourceQuat);
-                    gotSource = true;
-                  }
-                } else {
-                  // working leg = right -> use right ctrl (no hand tracking for right in this demo)
-                  if (ctrlR && ctrlR.visible) {
-                    sourcePos = new THREE.Vector3();
-                    ctrlR.getWorldPosition(sourcePos);
-                    sourceQuat = new THREE.Quaternion();
-                    ctrlR.getWorldQuaternion(sourceQuat);
-                    gotSource = true;
-                  }
-                }
-              } else {
-                // ctrlSide === 'leg' - use leg controller strapped to the working leg
-                // We'll use the same ctrl mappings but treat them as strapped to the leg.
-                // For left-arm-missing (work left leg): ctrlL is strapped to left leg
-                // For right-arm-missing (work right leg): ctrlR is strapped to right leg
-                if (missing === 'left') {
-                  if (ctrlL && ctrlL.visible) {
-                    sourcePos = new THREE.Vector3();
-                    ctrlL.getWorldPosition(sourcePos);
-                    sourceQuat = new THREE.Quaternion();
-                    ctrlL.getWorldQuaternion(sourceQuat);
-                    gotSource = true;
-                  }
-                } else {
-                  if (ctrlR && ctrlR.visible) {
-                    sourcePos = new THREE.Vector3();
-                    ctrlR.getWorldPosition(sourcePos);
-                    sourceQuat = new THREE.Quaternion();
-                    ctrlR.getWorldQuaternion(sourceQuat);
-                    gotSource = true;
-                  }
-                }
-              }
-
-              if (gotSource && sourcePos) {
-                // Mirror source pose to target leg
-                const mirrored = mirrorLegPose(sourcePos, sourceQuat, missing, ctrlSide);
-
-                // Place foot target slightly offset down from the mirrored pose (adjust for foot size)
-                // We want to control the foot tip position; offset accounts for foot geometry.
-                const footOffset = new THREE.Vector3(0, -0.12, 0.06);
-                footOffset.applyQuaternion(mirrored.quat);
-                const footTarget = mirrored.pos.clone().add(footOffset);
-
-                solveLegIK(targetLegHip, targetLegKnee, targetLegFoot, footTarget);
-
-                // Keep base leg in seated pose but allow gentle follow (optional)
-                // For now keep base leg fixed in seated pose
-                baseLegHip.rotation.x = Math.PI/2;
-                baseLegKnee.rotation.x = Math.PI/2;
-              }
-            }
-
-            // --- Avatar follows headset position ---
-            const xrCam = renderer.xr.getCamera();
-            const camPos = new THREE.Vector3();
-            xrCam.getWorldPosition(camPos);
-            avatar.position.x = camPos.x;
-            avatar.position.z = camPos.z;
-            avatar.position.y = 0;
-
-            renderer.render(scene, camera);
+            const sess = await navigator.xr.requestSession('immersive-vr', opts);
+            await renderer.xr.setSession(sess);
+            vrBtn.textContent = 'Exit VR';
+            vrBtn.onclick = () => sess.end();
+          } catch (e) {
+            console.error(e);
+            statusEl.textContent = 'VR not available: ' + e.message;
           }
         });
+      }
+
+      // Check controller availability
+      missingSel.addEventListener('change', setupLegMirrorFromSelections);
+      ctrlSel.addEventListener('change', setupLegMirrorFromSelections);
+      setupVRButton();
+
+     // ============================================================
+      // RENDER LOOP
+      // ============================================================
+      let refSpace = null;
+
+      renderer.setAnimationLoop((time, frame) => {
+        if (!vrActive) {
+          renderer.render(scene, camera);
+          return;
+        }
+
+        if (frame) {
+          refSpace = refSpace || renderer.xr.getReferenceSpace();
+          if (!refSpace) return;
+
+          // --- Left arm direct driving ---
+          if (trackedHandL && trackedHandL.get('wrist')) {
+            const wristJoint = trackedHandL.get('wrist');
+            const pose = frame.getJointPose(wristJoint, refSpace);
+            if (pose) {
+              const pos = new THREE.Vector3().fromArray(pose.transform.position);
+              const quat = new THREE.Quaternion().fromArray(pose.transform.orientation);
+              updateLeftArmFromSource(pos, quat);
+            }
+          } else if (ctrlL && ctrlL.visible) {
+            const lpos = new THREE.Vector3();
+            ctrlL.getWorldPosition(lpos);
+            const lquat = new THREE.Quaternion();
+            ctrlL.getWorldQuaternion(lquat);
+            updateLeftArmFromSource(lpos, lquat);
+          }
+
+          // --- Mirror to right arm ---
+          if (trackedHandL && trackedHandL.get('wrist')) {
+            const wristJoint = trackedHandL.get('wrist');
+            const pose = frame.getJointPose(wristJoint, refSpace);
+            if (pose) {
+              const pos = new THREE.Vector3().fromArray(pose.transform.position);
+              const quat = new THREE.Quaternion().fromArray(pose.transform.orientation);
+              mirrorLeftToRightArm(pos, quat);
+            }
+          } else if (ctrlL && ctrlL.visible) {
+            const lpos = new THREE.Vector3();
+            ctrlL.getWorldPosition(lpos);
+            const lquat = new THREE.Quaternion();
+            ctrlL.getWorldQuaternion(lquat);
+            mirrorLeftToRightArm(lpos, lquat);
+          }
+
+          // --- Leg mirror therapy ---
+          if (mirrorLegsActive) {
+            const missing = document.getElementById('missing-side').value;
+            const ctrlSide = document.getElementById('controller-side').value;
+            let sourcePos = null;
+            let sourceQuat = null;
+            let gotSource = false;
+
+            if (ctrlSide === 'arm') {
+              if (missing === 'left') {
+                if (ctrlL && ctrlL.visible) {
+                  sourcePos = new THREE.Vector3();
+                  ctrlL.getWorldPosition(sourcePos);
+                  sourceQuat = new THREE.Quaternion();
+                  ctrlL.getWorldQuaternion(sourceQuat);
+                  gotSource = true;
+                }
+              } else {
+                if (ctrlR && ctrlR.visible) {
+                  sourcePos = new THREE.Vector3();
+                  ctrlR.getWorldPosition(sourcePos);
+                  sourceQuat = new THREE.Quaternion();
+                  ctrlR.getWorldQuaternion(sourceQuat);
+                  gotSource = true;
+                }
+              }
+            } else {
+              if (missing === 'left') {
+                if (ctrlL && ctrlL.visible) {
+                  sourcePos = new THREE.Vector3();
+                  ctrlL.getWorldPosition(sourcePos);
+                  sourceQuat = new THREE.Quaternion();
+                  ctrlL.getWorldQuaternion(sourceQuat);
+                  gotSource = true;
+                }
+              } else {
+                if (ctrlR && ctrlR.visible) {
+                  sourcePos = new THREE.Vector3();
+                  ctrlR.getWorldPosition(sourcePos);
+                  sourceQuat = new THREE.Quaternion();
+                  ctrlR.getWorldQuaternion(sourceQuat);
+                  gotSource = true;
+                }
+              }
+            }
+
+            if (gotSource && sourcePos) {
+              const mirrored = mirrorLegPose(sourcePos, sourceQuat);
+              const footOffset = new THREE.Vector3(0, -0.12, 0.06);
+              footOffset.applyQuaternion(mirrored.quat);
+              const footTarget = mirrored.pos.clone().add(footOffset);
+              solveLegIK(targetLegHip, targetLegKnee, targetLegFoot, footTarget);
+              baseLegHip.rotation.x = Math.PI/2;
+              baseLegKnee.rotation.x = Math.PI/2;
+            }
+          }
+
+          // --- Avatar follows headset position ---
+          const xrCam = renderer.xr.getCamera();
+          const camPos = new THREE.Vector3();
+          xrCam.getWorldPosition(camPos);
+          avatar.position.x = camPos.x;
+          avatar.position.z = camPos.z;
+          avatar.position.y = 0;
+
+          renderer.render(scene, camera);
+        }
+      });
     } catch (e) {
       console.error(e);
       const el = document.getElementById('status');
