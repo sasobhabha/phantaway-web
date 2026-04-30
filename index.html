@@ -58,171 +58,171 @@
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.xr.enabled = true;
         renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
+         document.body.appendChild(renderer.domElement);
 
-        const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1);
-        scene.add(hemi);
+         const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1);
+         scene.add(hemi);
 
-     const skinMat = new THREE.MeshStandardMaterial({ color: 0xffd2b8, roughness: 0.6, metalness: 0.1 });
-     const shirtMat = new THREE.MeshStandardMaterial({ color: 0x3399ff, roughness: 0.5, metalness: 0.1 });
-     const pantsMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.6, metalness: 0.1 });
-     const robotMat = new THREE.MeshStandardMaterial({ color: 0x3399ff, roughness: 0.4, metalness: 0.2 });
-     const jointMat = new THREE.MeshStandardMaterial({ color: 0xffa500, roughness: 0.4, metalness: 0.2 });
+      const skinMat = new THREE.MeshStandardMaterial({ color: 0xffd2b8, roughness: 0.6, metalness: 0.1 });
+      const shirtMat = new THREE.MeshStandardMaterial({ color: 0x3399ff, roughness: 0.5, metalness: 0.1 });
+      const pantsMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.6, metalness: 0.1 });
+      const robotMat = new THREE.MeshStandardMaterial({ color: 0x3399ff, roughness: 0.4, metalness: 0.2 });
+      const jointMat = new THREE.MeshStandardMaterial({ color: 0xffa500, roughness: 0.4, metalness: 0.2 });
 
-     // Arm segment lengths (shared)
-     const L1 = 0.35; // upper arm (shoulder→elbow)
-     const L2 = 0.30; // forearm (elbow→wrist)
-
-    // ============================================================
-    // AVATAR BODY
-    // ============================================================
-    const avatar = new THREE.Group();
-    scene.add(avatar);
-
-    // Torso
-    const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.18, 0.55, 12), shirtMat);
-    torso.position.y = 0.9;
-    avatar.add(torso);
-
-    // Camera (XR camera set by device)
-    // camera position controlled by XR pose
-
-    // ============================================================
-    // LIMBS – joints as Groups with distinct joint spheres
-    // ============================================================
-
-    // --- LEFT ARM (simple human) ---
-    const leftShoulder = new THREE.Group();  // pitch X, yaw Y
-    const leftElbow = new THREE.Group();     // pitch X
-    const leftWrist = new THREE.Group();     // yaw Y
-    torso.add(leftShoulder);
-    leftShoulder.add(leftElbow);
-    leftElbow.add(leftWrist);
-
-    // shoulder offset from torso center
-    leftShoulder.position.set(0.22, 0, 0);
-    leftShoulder.rotation.order = 'YXZ'; // yaw first, then pitch
-
-    // DISTINCT JOINTS – sphere at exact joint center
-    const leftJointS = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 12), jointMat);
-    leftShoulder.add(leftJointS);
-
-    // upper arm link (vertical cylinder)
-    const leftUpper = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.035, L1, 12), skinMat);
-    leftUpper.position.y = -L1/2;
-    leftShoulder.add(leftUpper);
-
-    // elbow joint sphere
-    leftElbow.position.y = -L1;
-    const leftJointE = new THREE.Mesh(new THREE.SphereGeometry(0.04, 12, 12), jointMat);
-    leftElbow.add(leftJointE);
-
-    // forearm link
-    const leftFore = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.03, L2, 12), skinMat);
-    leftFore.position.y = -L2/2;
-    leftElbow.add(leftFore);
-
-    // wrist joint sphere
-    leftWrist.position.y = -L2;
-    const leftJointW = new THREE.Mesh(new THREE.SphereGeometry(0.035, 12, 12), jointMat);
-    leftWrist.add(leftJointW);
-
-    // hand
-    const leftHand = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.08, 0.03), skinMat);
-    leftHand.position.y = -0.10;
-    leftWrist.add(leftHand);
-
-    // --- RIGHT ARM (robotic) ---
-    const rShoulder = new THREE.Group();
-    const rElbow = new THREE.Group();
-    const rWrist = new THREE.Group();
-    torso.add(rShoulder);
-    rShoulder.add(rElbow);
-    rElbow.add(rWrist);
-
-    rShoulder.position.set(-0.22, 0, 0);
-    rShoulder.rotation.order = 'YXZ';
-
-    // joint spheres
-    const rJointS = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 12), jointMat);
-    rShoulder.add(rJointS);
-
-    // upper arm
-    const rUpper = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.035, L1, 12), robotMat);
-    rUpper.position.y = -L1/2;
-    rShoulder.add(rUpper);
-
-    // elbow
-    rElbow.position.y = -L1;
-    const rJointE = new THREE.Mesh(new THREE.SphereGeometry(0.04, 12, 12), jointMat);
-    rElbow.add(rJointE);
-
-    // forearm
-    const rFore = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.03, L2, 12), robotMat);
-    rFore.position.y = -L2/2;
-    rElbow.add(rFore);
-
-    // wrist
-    rWrist.position.y = -L2;
-    const rJointW = new THREE.Mesh(new THREE.SphereGeometry(0.035, 12, 12), jointMat);
-    rWrist.add(rJointW);
-
-    // gripper
-    const rGripper = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.12, 0.04), robotMat);
-    rGripper.position.y = -0.10;
-    rWrist.add(rGripper);
-
-    // --- LEGS (seated: hips/knees at 90°) ---
-    const leftHip = new THREE.Group();   // pitch X
-    const leftKnee = new THREE.Group();
-    torso.add(leftHip);
-    leftHip.add(leftKnee);
-
-    leftHip.position.set(0.1, -0.05, 0); // hip joint slightly below torso
-    leftHip.add(new THREE.Mesh(new THREE.SphereGeometry(0.055, 12, 12), jointMat));
-    const leftThigh = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.055, 0.45, 12), pantsMat);
-    leftThigh.position.y = -0.225;
-    leftHip.add(leftThigh);
-    leftKnee.position.y = -0.45;
-    leftKnee.add(new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 12), jointMat));
-    const leftShin = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.045, 0.45, 12), pantsMat);
-    leftShin.position.y = -0.225;
-    leftKnee.add(leftShin);
-    const leftFoot = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 0.14), skinMat);
-    leftFoot.position.set(0, -0.225, 0.05);
-    leftKnee.add(leftFoot);
-
-    const rightHip = new THREE.Group();
-    const rightKnee = new THREE.Group();
-    torso.add(rightHip);
-    rightHip.add(rightKnee);
-
-    rightHip.position.set(-0.1, -0.05, 0);
-    rightHip.add(new THREE.Mesh(new THREE.SphereGeometry(0.055, 12, 12), jointMat));
-    const rightThigh = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.055, 0.45, 12), pantsMat);
-    rightThigh.position.y = -0.225;
-    rightHip.add(rightThigh);
-    rightKnee.position.y = -0.45;
-    rightKnee.add(new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 12), jointMat));
-    const rightShin = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.045, 0.45, 12), pantsMat);
-    rightShin.position.y = -0.225;
-    rightKnee.add(rightShin);
-    const rightFoot = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 0.14), skinMat);
-    rightFoot.position.set(0, -0.225, 0.05);
-    rightKnee.add(rightFoot);
-
-    // Seated pose: hips and knees at 90°
-    leftHip.rotation.x = Math.PI/2;
-    leftKnee.rotation.x = Math.PI/2;
-    rightHip.rotation.x = Math.PI/2;
-    rightKnee.rotation.x = Math.PI/2;
-
-    // Ground grid
-    const grid = new THREE.GridHelper(10, 10, 0x444444, 0x333333);
-    grid.position.y = 0.01;
-    scene.add(grid);
+      // Arm segment lengths (shared)
+      const L1 = 0.35; // upper arm (shoulder→elbow)
+      const L2 = 0.30; // forearm (elbow→wrist)
 
      // ============================================================
+     // AVATAR BODY
+     // ============================================================
+     const avatar = new THREE.Group();
+     scene.add(avatar);
+
+     // Torso
+     const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.18, 0.55, 12), shirtMat);
+     torso.position.y = 0.9;
+     avatar.add(torso);
+
+     // Camera (XR camera set by device)
+     // camera position controlled by XR pose
+
+     // ============================================================
+     // LIMBS – joints as Groups with distinct joint spheres
+     // ============================================================
+
+     // --- LEFT ARM (simple human) ---
+     const leftShoulder = new THREE.Group();  // pitch X, yaw Y
+     const leftElbow = new THREE.Group();     // pitch X
+     const leftWrist = new THREE.Group();     // yaw Y
+     torso.add(leftShoulder);
+     leftShoulder.add(leftElbow);
+     leftElbow.add(leftWrist);
+
+     // shoulder offset from torso center
+     leftShoulder.position.set(0.22, 0, 0);
+     leftShoulder.rotation.order = 'YXZ'; // yaw first, then pitch
+
+     // DISTINCT JOINTS – sphere at exact joint center
+     const leftJointS = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 12), jointMat);
+     leftShoulder.add(leftJointS);
+
+     // upper arm link (vertical cylinder)
+     const leftUpper = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.035, L1, 12), skinMat);
+     leftUpper.position.y = -L1/2;
+     leftShoulder.add(leftUpper);
+
+     // elbow joint sphere
+     leftElbow.position.y = -L1;
+     const leftJointE = new THREE.Mesh(new THREE.SphereGeometry(0.04, 12, 12), jointMat);
+     leftElbow.add(leftJointE);
+
+     // forearm link
+     const leftFore = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.03, L2, 12), skinMat);
+     leftFore.position.y = -L2/2;
+     leftElbow.add(leftFore);
+
+     // wrist joint sphere
+     leftWrist.position.y = -L2;
+     const leftJointW = new THREE.Mesh(new THREE.SphereGeometry(0.035, 12, 12), jointMat);
+     leftWrist.add(leftJointW);
+
+     // hand
+     const leftHand = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.08, 0.03), skinMat);
+     leftHand.position.y = -0.10;
+     leftWrist.add(leftHand);
+
+     // --- RIGHT ARM (robotic) ---
+     const rShoulder = new THREE.Group();
+     const rElbow = new THREE.Group();
+     const rWrist = new THREE.Group();
+     torso.add(rShoulder);
+     rShoulder.add(rElbow);
+     rElbow.add(rWrist);
+
+     rShoulder.position.set(-0.22, 0, 0);
+     rShoulder.rotation.order = 'YXZ';
+
+     // joint spheres
+     const rJointS = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 12), jointMat);
+     rShoulder.add(rJointS);
+
+     // upper arm
+     const rUpper = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.035, L1, 12), robotMat);
+     rUpper.position.y = -L1/2;
+     rShoulder.add(rUpper);
+
+     // elbow
+     rElbow.position.y = -L1;
+     const rJointE = new THREE.Mesh(new THREE.SphereGeometry(0.04, 12, 12), jointMat);
+     rElbow.add(rJointE);
+
+     // forearm
+     const rFore = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.03, L2, 12), robotMat);
+     rFore.position.y = -L2/2;
+     rElbow.add(rFore);
+
+     // wrist
+     rWrist.position.y = -L2;
+     const rJointW = new THREE.Mesh(new THREE.SphereGeometry(0.035, 12, 12), jointMat);
+     rWrist.add(rJointW);
+
+     // gripper
+     const rGripper = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.12, 0.04), robotMat);
+     rGripper.position.y = -0.10;
+     rWrist.add(rGripper);
+
+     // --- LEGS (seated: hips/knees at 90°) ---
+     const leftHip = new THREE.Group();   // pitch X
+     const leftKnee = new THREE.Group();
+     torso.add(leftHip);
+     leftHip.add(leftKnee);
+
+     leftHip.position.set(0.1, -0.05, 0); // hip joint slightly below torso
+     leftHip.add(new THREE.Mesh(new THREE.SphereGeometry(0.055, 12, 12), jointMat));
+     const leftThigh = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.055, 0.45, 12), pantsMat);
+     leftThigh.position.y = -0.225;
+     leftHip.add(leftThigh);
+     leftKnee.position.y = -0.45;
+     leftKnee.add(new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 12), jointMat));
+     const leftShin = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.045, 0.45, 12), pantsMat);
+     leftShin.position.y = -0.225;
+     leftKnee.add(leftShin);
+     const leftFoot = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 0.14), skinMat);
+     leftFoot.position.set(0, -0.225, 0.05);
+     leftKnee.add(leftFoot);
+
+     const rightHip = new THREE.Group();
+     const rightKnee = new THREE.Group();
+     torso.add(rightHip);
+     rightHip.add(rightKnee);
+
+     rightHip.position.set(-0.1, -0.05, 0);
+     rightHip.add(new THREE.Mesh(new THREE.SphereGeometry(0.055, 12, 12), jointMat));
+     const rightThigh = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.055, 0.45, 12), pantsMat);
+     rightThigh.position.y = -0.225;
+     rightHip.add(rightThigh);
+     rightKnee.position.y = -0.45;
+     rightKnee.add(new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 12), jointMat));
+     const rightShin = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.045, 0.45, 12), pantsMat);
+     rightShin.position.y = -0.225;
+     rightKnee.add(rightShin);
+     const rightFoot = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 0.14), skinMat);
+     rightFoot.position.set(0, -0.225, 0.05);
+     rightKnee.add(rightFoot);
+
+     // Seated pose: hips and knees at 90°
+     leftHip.rotation.x = Math.PI/2;
+     leftKnee.rotation.x = Math.PI/2;
+     rightHip.rotation.x = Math.PI/2;
+     rightKnee.rotation.x = Math.PI/2;
+
+     // Ground grid
+     const grid = new THREE.GridHelper(10, 10, 0x444444, 0x333333);
+     grid.position.y = 0.01;
+     scene.add(grid);
+
+        // ============================================================
       // VR INPUT
       // ============================================================
       const ctrlL = renderer.xr.getController(0);
@@ -244,8 +244,6 @@
 
       let vrActive = false;
       let trackedHandL = null;
-
-      const statusEl = document.getElementById('status');
 
       // ============================================================
       // LEG IK Solver and mirror setup
